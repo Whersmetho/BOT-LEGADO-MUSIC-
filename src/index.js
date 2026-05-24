@@ -9,22 +9,27 @@ const {
 const fs = require('fs');
 const path = require('path');
 
-const { spotifyClientId, spotifyClientSecret } = require('../config.json');
 const { initSpotify } = require('./spotify');
 
-// ===============================
-// TOKEN DESDE RAILWAY / GITHUB
-// ===============================
+// ==========================
+// VARIABLES DE ENTORNO
+// ==========================
 const token = process.env.TOKEN?.trim();
 
+const spotifyClientId = process.env.SPOTIFY_CLIENT_ID;
+const spotifyClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+
+// ==========================
+// VALIDAR TOKEN
+// ==========================
 if (!token) {
-  console.error('❌ No se encontró la variable TOKEN');
+  console.error('❌ TOKEN no encontrado');
   process.exit(1);
 }
 
-// ===============================
+// ==========================
 // CLIENTE DISCORD
-// ===============================
+// ==========================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -34,16 +39,16 @@ const client = new Client({
   ],
 });
 
-// ===============================
+// ==========================
 // COLECCIONES
-// ===============================
+// ==========================
 client.commands = new Collection();
 client.aliases = new Collection();
 client.queues = new Map();
 
-// ===============================
+// ==========================
 // CARGAR COMANDOS
-// ===============================
+// ==========================
 const commandsPath = path.join(__dirname, 'commands');
 
 const commandFiles = fs
@@ -62,11 +67,11 @@ for (const file of commandFiles) {
   }
 }
 
-// ===============================
+// ==========================
 // READY
-// ===============================
+// ==========================
 client.once('ready', () => {
-  console.log(`✅ Bot listo: ${client.user.tag}`);
+  console.log(`✅ Bot listo como ${client.user.tag}`);
 
   client.user.setActivity('🎵 l!help para comandos');
 
@@ -81,9 +86,9 @@ client.once('ready', () => {
   }
 });
 
-// ===============================
+// ==========================
 // MENSAJES
-// ===============================
+// ==========================
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -117,9 +122,9 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// ===============================
+// ==========================
 // LOGIN
-// ===============================
+// ==========================
 client
   .login(token)
   .then(() => {
