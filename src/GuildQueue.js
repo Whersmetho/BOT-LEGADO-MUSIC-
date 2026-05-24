@@ -7,7 +7,7 @@ const {
 const { spawn } = require('child_process');
 const { EmbedBuilder } = require('discord.js');
 const { getRelatedVideos } = require('./autoplay');
-const ffmpegPath = require('ffmpeg-static'); // ffmpeg incluido en npm
+const ffmpegPath = require('ffmpeg-static');
 
 function nowPlayingEmbed(song, autoplay = false) {
   return new EmbedBuilder()
@@ -43,6 +43,9 @@ function extractID(url) {
   const match = url?.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/);
   return match ? match[1] : '';
 }
+
+// Ruta de Node.js para yt-dlp --js-runtimes
+const nodePath = process.execPath;
 
 const MAX_HISTORY = 50;
 
@@ -103,6 +106,30 @@ class GuildQueue {
     });
   }
 
+  _spawnYtdlp(url) {
+    return spawn('yt-dlp', [
+      '--js-runtimes', `node:${nodePath}`,
+      '-f', 'bestaudio/best',
+      '-o', '-',
+      '--no-playlist',
+      '--quiet',
+      '--no-warnings',
+      url,
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  }
+
+  _spawnFfmpeg() {
+    return spawn(ffmpegPath, [
+      '-i', 'pipe:0',
+      '-analyzeduration', '0',
+      '-loglevel', 'error',
+      '-f', 's16le',
+      '-ar', '48000',
+      '-ac', '2',
+      'pipe:1',
+    ], { stdio: ['pipe', 'pipe', 'ignore'] });
+  }
+
   _prefetchNext() {
     if (this.songs.length < 2) return;
     const nextSong = this.songs[1];
@@ -111,28 +138,12 @@ class GuildQueue {
 
     this.prefetchTimeout = setTimeout(() => {
       try {
-        const ffmpeg = spawn(ffmpegPath, [
-          '-i', 'pipe:0',
-          '-analyzeduration', '0',
-          '-loglevel', 'error',
-          '-f', 's16le',
-          '-ar', '48000',
-          '-ac', '2',
-          'pipe:1',
-        ], { stdio: ['pipe', 'pipe', 'ignore'] });
-
-        const ytdlp = spawn('yt-dlp', [
-          '--js-runtimes', 'node',
-          '-f', 'bestaudio/best',
-          '-o', '-',
-          '--no-playlist',
-          '--quiet',
-          '--no-warnings',
-          nextSong.url,
-        ], { stdio: ['ignore', 'pipe', 'ignore'] });
+        const ffmpeg = this._spawnFfmpeg();
+        const ytdlp = this._spawnYtdlp(nextSong.url);
 
         ytdlp.stdout.pipe(ffmpeg.stdin, { end: true });
         ytdlp.stdout.on('error', () => {});
+        ytdlp.stderr.on('data', (d) => console.error('yt-dlp prefetch:', d.toString().trim()));
         ffmpeg.stdin.on('error', () => {});
         ffmpeg.stdout.on('error', () => {});
 
@@ -234,33 +245,21 @@ class GuildQueue {
   async _play(song) {
     this._killProcesses();
     try {
-      const ffmpeg = spawn(ffmpegPath, [ // <-- usa ffmpeg-static
-        '-i', 'pipe:0',
-        '-analyzeduration', '0',
-        '-loglevel', 'error',
-        '-f', 's16le',
-        '-ar', '48000',
-        '-ac', '2',
-        'pipe:1',
-      ], { stdio: ['pipe', 'pipe', 'ignore'] });
-
-      const ytdlp = spawn('yt-dlp', [
-        '--js-runtimes', 'node',
-        '-f', 'bestaudio/best',
-        '-o', '-',
-        '--no-playlist',
-        '--quiet',
-        '--no-warnings',
-        song.url,
-      ], { stdio: ['ignore', 'pipe', 'ignore'] });
+      const ffmpeg = this._spawnFfmpeg();
+      const ytdlp = this._spawnYtdlp(song.url);
 
       this.ytdlpProc = ytdlp;
       this.ffmpegProc = ffmpeg;
 
       ytdlp.stdout.pipe(ffmpeg.stdin, { end: true });
       ytdlp.stdout.on('error', () => {});
+      ytdlp.stderr.on('data', (d) => console.error('yt-dlp:', d.toString().trim()));
       ffmpeg.stdin.on('error', () => {});
       ffmpeg.stdout.on('error', () => {});
+
+      ytdlp.on('exit', (code) => {
+        if (code !== 0 && code !== null) console.error(`yt-dlp salió con código ${code}`);
+      });
 
       const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
       this.player.play(resource);
