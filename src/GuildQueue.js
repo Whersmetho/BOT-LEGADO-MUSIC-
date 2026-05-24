@@ -7,6 +7,7 @@ const {
 const { spawn } = require('child_process');
 const { EmbedBuilder } = require('discord.js');
 const { getRelatedVideos } = require('./autoplay');
+const ffmpegPath = require('ffmpeg-static'); // ffmpeg incluido en npm
 
 function nowPlayingEmbed(song, autoplay = false) {
   return new EmbedBuilder()
@@ -43,23 +44,6 @@ function extractID(url) {
   return match ? match[1] : '';
 }
 
-// Pre-obtiene la URL de audio real de un video sin descargarlo
-function prefetchAudioStream(url) {
-  return new Promise((resolve) => {
-    const ytdlp = spawn('yt-dlp', [
-      '--js-runtimes', 'node',
-      '-f', 'bestaudio/best',
-      '-o', '-',
-      '--no-playlist',
-      '--quiet',
-      '--no-warnings',
-      url,
-    ], { stdio: ['ignore', 'pipe', 'ignore'] });
-
-    resolve(ytdlp); // devolver el proceso listo para usar
-  });
-}
-
 const MAX_HISTORY = 50;
 
 class GuildQueue {
@@ -77,10 +61,9 @@ class GuildQueue {
     this.player = createAudioPlayer();
     this.ytdlpProc = null;
     this.ffmpegProc = null;
-
-    // Pre-carga de la siguiente canción
     this.nextYtdlp = null;
     this.nextFfmpeg = null;
+    this.prefetchSong = null;
     this.prefetchTimeout = null;
 
     connection.subscribe(this.player);
@@ -120,19 +103,15 @@ class GuildQueue {
     });
   }
 
-  // Inicia el proceso de yt-dlp+ffmpeg para la siguiente canción en segundo plano
   _prefetchNext() {
     if (this.songs.length < 2) return;
     const nextSong = this.songs[1];
     if (!nextSong) return;
-
-    // Cancelar prefetch anterior si existe
     this._cancelPrefetch();
 
-    // Esperar 3 segundos para no saturar al inicio
     this.prefetchTimeout = setTimeout(() => {
       try {
-        const ffmpeg = spawn('ffmpeg', [
+        const ffmpeg = spawn(ffmpegPath, [
           '-i', 'pipe:0',
           '-analyzeduration', '0',
           '-loglevel', 'error',
@@ -160,8 +139,6 @@ class GuildQueue {
         this.nextYtdlp = ytdlp;
         this.nextFfmpeg = ffmpeg;
         this.prefetchSong = nextSong;
-
-        console.log(`🔄 Pre-cargando: ${nextSong.title}`);
       } catch (e) {
         console.error('Error en prefetch:', e.message);
       }
@@ -175,31 +152,22 @@ class GuildQueue {
     this.prefetchSong = null;
   }
 
-  // Reproducir usando el prefetch si está disponible
   async _playWithPrefetch() {
     const song = this.songs[0];
-
-    // Si el prefetch ya tiene lista esta canción, usarlo directamente
     if (this.nextFfmpeg && this.nextYtdlp && this.prefetchSong?.url === song.url) {
       this._killProcesses();
-
       const ffmpeg = this.nextFfmpeg;
       const ytdlp = this.nextYtdlp;
       this.nextFfmpeg = null;
       this.nextYtdlp = null;
       this.prefetchSong = null;
-
       this.ytdlpProc = ytdlp;
       this.ffmpegProc = ffmpeg;
-
       const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
       this.player.play(resource);
       this.textChannel.send({ embeds: [nowPlayingEmbed(song, this.autoplay)] });
-
-      // Pre-cargar la siguiente
       this._prefetchNext();
     } else {
-      // No hay prefetch disponible, reproducir normal
       await this._play(song);
     }
   }
@@ -212,18 +180,13 @@ class GuildQueue {
 
       if (this.relatedPool.length < 2) {
         const related = await getRelatedVideos(this.lastSong.url, this.lastSong.title, this.history);
-        if (related.length > 0) {
-          this.relatedPool = related.sort(() => Math.random() - 0.5);
-        }
+        if (related.length > 0) this.relatedPool = related.sort(() => Math.random() - 0.5);
       }
 
       let song = null;
       while (this.relatedPool.length > 0) {
         const candidate = this.relatedPool.shift();
-        if (!this.history.includes(candidate.url)) {
-          song = candidate;
-          break;
-        }
+        if (!this.history.includes(candidate.url)) { song = candidate; break; }
       }
 
       if (!song) {
@@ -238,14 +201,11 @@ class GuildQueue {
       this.songs.push(song);
       await this._play(song);
 
-      // Pre-cargar más en segundo plano
       if (this.relatedPool.length < 3) {
         getRelatedVideos(song.url, song.title, this.history).then(more => {
-          const nuevas = more.filter(v => !this.history.includes(v.url));
-          this.relatedPool.push(...nuevas.sort(() => Math.random() - 0.5));
+          this.relatedPool.push(...more.filter(v => !this.history.includes(v.url)).sort(() => Math.random() - 0.5));
         }).catch(() => {});
       }
-
     } catch (err) {
       console.error('Error en autoplay:', err.message);
       this.playing = false;
@@ -261,24 +221,20 @@ class GuildQueue {
   async addSong(song, silent = false) {
     const position = this.songs.length;
     this.songs.push(song);
-
     if (!this.playing) {
       this.playing = true;
       await this._play(this.songs[0]);
-      // Iniciar prefetch de la segunda canción
       this._prefetchNext();
     } else if (!silent && position > 0) {
       this.textChannel.send({ embeds: [queueEmbed(song, position)] });
-      // Si es la segunda canción, iniciar prefetch
       if (position === 1) this._prefetchNext();
     }
   }
 
   async _play(song) {
     this._killProcesses();
-
     try {
-      const ffmpeg = spawn('ffmpeg', [
+      const ffmpeg = spawn(ffmpegPath, [ // <-- usa ffmpeg-static
         '-i', 'pipe:0',
         '-analyzeduration', '0',
         '-loglevel', 'error',
@@ -309,8 +265,6 @@ class GuildQueue {
       const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
       this.player.play(resource);
       this.textChannel.send({ embeds: [nowPlayingEmbed(song, this.autoplay)] });
-
-      // Iniciar prefetch de la siguiente canción
       this._prefetchNext();
 
     } catch (err) {
