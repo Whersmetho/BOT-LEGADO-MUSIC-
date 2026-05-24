@@ -2,6 +2,7 @@ const {
   createAudioPlayer,
   createAudioResource,
   AudioPlayerStatus,
+  VoiceConnectionStatus,
   StreamType,
 } = require('@discordjs/voice');
 const { spawn } = require('child_process');
@@ -44,9 +45,7 @@ function extractID(url) {
   return match ? match[1] : '';
 }
 
-// Ruta de Node.js para yt-dlp --js-runtimes
 const nodePath = process.execPath;
-
 const MAX_HISTORY = 50;
 
 class GuildQueue {
@@ -61,6 +60,7 @@ class GuildQueue {
     this.lastSong = null;
     this.history = [];
     this.relatedPool = [];
+    this.destroyed = false;
     this.player = createAudioPlayer();
     this.ytdlpProc = null;
     this.ffmpegProc = null;
@@ -71,7 +71,16 @@ class GuildQueue {
 
     connection.subscribe(this.player);
 
+    // Manejar desconexión sin crash
+    connection.on(VoiceConnectionStatus.Destroyed, () => {
+      this.destroyed = true;
+      this._killProcesses();
+      this._cancelPrefetch();
+    });
+
     this.player.on(AudioPlayerStatus.Idle, async () => {
+      if (this.destroyed) return;
+
       if (this.loop && this.songs.length > 0) {
         this._play(this.songs[0]);
       } else {
@@ -92,7 +101,11 @@ class GuildQueue {
           this.textChannel.send({
             embeds: [new EmbedBuilder().setColor('#2ECC71').setDescription('✅ **Cola vacía. ¡Hasta la próxima!**').setFooter({ text: 'LEGADO MUSIC' })]
           });
-          setTimeout(() => { if (!this.playing) this.connection.destroy(); }, 30000);
+          setTimeout(() => {
+            if (!this.playing && !this.destroyed) {
+              try { this.connection.destroy(); } catch {}
+            }
+          }, 30000);
         }
       }
     });
@@ -107,6 +120,8 @@ class GuildQueue {
   }
 
   _spawnYtdlp(url) {
+    console.log(`▶️ yt-dlp iniciando: ${url}`);
+    console.log(`   Node path: ${nodePath}`);
     return spawn('yt-dlp', [
       '--js-runtimes', `node:${nodePath}`,
       '-f', 'bestaudio/best',
@@ -143,7 +158,7 @@ class GuildQueue {
 
         ytdlp.stdout.pipe(ffmpeg.stdin, { end: true });
         ytdlp.stdout.on('error', () => {});
-        ytdlp.stderr.on('data', (d) => console.error('yt-dlp prefetch:', d.toString().trim()));
+        ytdlp.stderr.on('data', (d) => console.error('yt-dlp prefetch err:', d.toString().trim()));
         ffmpeg.stdin.on('error', () => {});
         ffmpeg.stdout.on('error', () => {});
 
@@ -205,7 +220,7 @@ class GuildQueue {
         this.textChannel.send({
           embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No encontré canciones relacionadas nuevas.')]
         });
-        setTimeout(() => { if (!this.playing) this.connection.destroy(); }, 30000);
+        setTimeout(() => { if (!this.playing && !this.destroyed) { try { this.connection.destroy(); } catch {} } }, 30000);
         return;
       }
 
@@ -220,7 +235,6 @@ class GuildQueue {
     } catch (err) {
       console.error('Error en autoplay:', err.message);
       this.playing = false;
-      setTimeout(() => { if (!this.playing) this.connection.destroy(); }, 30000);
     }
   }
 
@@ -253,12 +267,13 @@ class GuildQueue {
 
       ytdlp.stdout.pipe(ffmpeg.stdin, { end: true });
       ytdlp.stdout.on('error', () => {});
-      ytdlp.stderr.on('data', (d) => console.error('yt-dlp:', d.toString().trim()));
+      ytdlp.stderr.on('data', (d) => console.error('yt-dlp err:', d.toString().trim()));
       ffmpeg.stdin.on('error', () => {});
       ffmpeg.stdout.on('error', () => {});
 
       ytdlp.on('exit', (code) => {
-        if (code !== 0 && code !== null) console.error(`yt-dlp salió con código ${code}`);
+        if (code !== 0 && code !== null) console.error(`yt-dlp salió con código ${code} para ${song.url}`);
+        else console.log(`yt-dlp completado OK para: ${song.title}`);
       });
 
       const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.Raw });
@@ -293,7 +308,12 @@ class GuildQueue {
     this.playing = false;
   }
 
-  destroy() { this.stop(); try { this.connection.destroy(); } catch {} }
+  destroy() {
+    this.destroyed = true;
+    this.stop();
+    try { this.connection.destroy(); } catch {}
+  }
+
   toggleLoop() { this.loop = !this.loop; return this.loop; }
   toggleAutoplay() { this.autoplay = !this.autoplay; return this.autoplay; }
   getNowPlaying() { return this.songs[0] || null; }
