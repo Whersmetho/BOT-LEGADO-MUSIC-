@@ -122,7 +122,11 @@ class GuildQueue {
   _spawnYtdlp(url) {
     console.log(`▶️ yt-dlp iniciando: ${url}`);
     console.log(`   Node path: ${nodePath}`);
+    const cookiesPath = require('path').join(process.cwd(), 'cookies.txt');
+    const fs = require('fs');
+    const cookiesArgs = fs.existsSync(cookiesPath) ? ['--cookies', cookiesPath] : [];
     return spawn('yt-dlp', [
+      ...cookiesArgs,
       '--js-runtimes', `node:${nodePath}`,
       '-f', 'bestaudio/best',
       '-o', '-',
