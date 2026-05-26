@@ -10,6 +10,9 @@ module.exports = {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No hay música en cola.')] });
     }
 
+    const userChannel = message.member.voice.channel;
+    if (!userChannel || userChannel.id !== queue.voiceChannel.id) return;
+
     const { allowed, reason } = canStop(message.member, queue);
     if (!allowed) {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription(reason)] });

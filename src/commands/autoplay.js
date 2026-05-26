@@ -11,6 +11,9 @@ module.exports = {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No hay música en la cola.')] });
     }
 
+    const userChannel = message.member.voice.channel;
+    if (!userChannel || userChannel.id !== queue.voiceChannel.id) return;
+
     const { allowed, reason } = canControl(message.member, queue, 'l!autoplay');
     if (!allowed) {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription(reason)] });

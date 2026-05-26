@@ -76,6 +76,9 @@ module.exports = {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('📭 **La cola está vacía.**')] });
     }
 
+    const userChannel = message.member.voice.channel;
+    if (!userChannel || userChannel.id !== queue.voiceChannel.id) return;
+
     let page = 0;
     const { embed, totalPages, safePage } = buildQueueEmbed(queue, page);
     const components = totalPages > 1 ? [buildQueueButtons(safePage, totalPages)] : [];
@@ -84,7 +87,6 @@ module.exports = {
 
     if (totalPages <= 1) return;
 
-    // Colector de botones de paginación
     const collector = reply.createMessageComponentCollector({ time: 60000 });
 
     collector.on('collect', async (i) => {
