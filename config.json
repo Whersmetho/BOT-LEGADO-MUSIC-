@@ -1,0 +1,5 @@
+{
+  "token": "process.env.DISCORD_TOKEN",
+  "spotifyClientId": "e1d04c4dd43e464c89a79e767a23fcf1",
+    "spotifyClientSecret": "686142d853ad42e4a2eda4515171e5ae"
+}
