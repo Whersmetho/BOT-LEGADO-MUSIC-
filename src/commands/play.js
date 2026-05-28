@@ -32,7 +32,7 @@ module.exports = {
           autoPlay:     false,
         });
         player.autoplay       = false;
-        player.loop           = 'off';
+        player.loop = false;
         player.nowPlayingMsgId = null;
       }
 

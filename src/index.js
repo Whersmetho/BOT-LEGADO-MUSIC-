@@ -69,7 +69,7 @@ client.moon.on('nodeDestroy', node =>
 
 // Cuando termina una canción → reproducir la siguiente
 client.moon.on('trackEnd', async (player, track) => {
-  const textChannel = client.channels.cache.get(player.textChannelId);
+  const textChannel = client.channels.cache.get(player.textChannel);
   if (!textChannel) return;
 
   // Deshabilitar botones del mensaje anterior
@@ -81,7 +81,7 @@ client.moon.on('trackEnd', async (player, track) => {
     player.nowPlayingMsgId = null;
   }
 
-  if (player.loop === 'track') {
+  if (player.loop) {
     player.play();
     return;
   }
@@ -109,7 +109,7 @@ client.moon.on('trackEnd', async (player, track) => {
 
 // Cuando empieza una canción → mostrar embed
 client.moon.on('trackStart', async (player, track) => {
-  const textChannel = client.channels.cache.get(player.textChannelId);
+  const textChannel = client.channels.cache.get(player.textChannel);
   if (!textChannel) return;
 
   const embed = nowPlayingEmbed(track, player);
@@ -123,7 +123,7 @@ client.moon.on('trackStart', async (player, track) => {
 
 client.moon.on('trackError', async (player, track, err) => {
   console.error('Track error:', err);
-  const textChannel = client.channels.cache.get(player.textChannelId);
+  const textChannel = client.channels.cache.get(player.textChannel);
   if (textChannel) {
     textChannel.send({ embeds: [
       new EmbedBuilder().setColor('#E74C3C').setDescription('❌ **Error al reproducir esta canción. Saltando...**')
@@ -154,7 +154,7 @@ client.on('interactionCreate', async (interaction) => {
   if (!player) return interaction.reply({ content: '❌ No hay música reproduciéndose.', ephemeral: true });
 
   const voiceChannel = interaction.member?.voice?.channel;
-  if (!voiceChannel || voiceChannel.id !== player.voiceChannelId)
+  if (!voiceChannel || voiceChannel.id !== player.voiceChannel)
     return interaction.reply({ content: '🎤 Debes estar en el canal de voz.', ephemeral: true });
 
   await interaction.deferUpdate();
@@ -173,8 +173,8 @@ client.on('interactionCreate', async (interaction) => {
       interaction.followUp({ content: '⏹️ Música detenida.', ephemeral: true });
       break;
     case 'btn_loop':
-      player.loop = player.loop === 'track' ? 'off' : 'track';
-      interaction.followUp({ content: player.loop === 'track' ? '🔁 Bucle activado.' : '➡️ Bucle desactivado.', ephemeral: true });
+      player.loop = player.loop ? false : true;
+      interaction.followUp({ content: player.loop ? '🔁 Bucle activado.' : '➡️ Bucle desactivado.', ephemeral: true });
       break;
     case 'btn_autoplay':
       player.autoplay = !player.autoplay;
@@ -231,7 +231,7 @@ function enabledButtons(player) {
     new ButtonBuilder().setCustomId('btn_pause').setEmoji('⏸️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('btn_skip').setEmoji('⏭️').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('btn_stop').setEmoji('⏹️').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('btn_loop').setEmoji('🔁').setStyle(player.loop === 'track' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('btn_loop').setEmoji('🔁').setStyle(player.loop ? ButtonStyle.Primary : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('btn_autoplay').setEmoji('🔀').setStyle(player.autoplay ? ButtonStyle.Primary : ButtonStyle.Secondary),
   );
 }

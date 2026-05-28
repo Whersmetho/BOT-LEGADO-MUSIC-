@@ -16,8 +16,8 @@ module.exports = {
     const { allowed, reason } = canControl(message.member, fakeQueue, 'l!loop');
     if (!allowed) return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription(reason)] });
 
-    player.loop = player.loop === 'track' ? 'off' : 'track';
-    const looping = player.loop === 'track';
+    player.loop = player.loop ? false : true;
+    const looping = player.loop;
 
     message.reply({ embeds: [
       new EmbedBuilder()
