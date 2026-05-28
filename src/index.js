@@ -47,14 +47,14 @@ for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) 
 }
 
 // ── Moonlink (Lavalink) ──────────────────────────────────────────────────────
-client.moon = new MoonlinkManager({
-  nodes: LAVALINK_NODES,
-  options: { clientName: 'LEGADO MUSIC' },
-  sendPayload(guildId, payload) {
+client.moon = new MoonlinkManager(
+  LAVALINK_NODES,
+  { clientName: 'LEGADO MUSIC' },
+  (guildId, payload) => {
     const guild = client.guilds.cache.get(guildId);
     if (guild) guild.shard.send(JSON.parse(payload));
-  },
-});
+  }
+);
 
 // Eventos del manager
 client.moon.on('nodeCreate', node =>
