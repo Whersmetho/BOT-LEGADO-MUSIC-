@@ -53,7 +53,7 @@ module.exports = {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('📭 **La cola está vacía.**')] });
 
     const vc = message.member.voice.channel;
-    if (!vc || vc.id !== player.voiceChannelId) return;
+    if (!vc || vc.id !== player.voiceChannel) return;
 
     let page = 0;
     const { embed, totalPages, safePage } = buildQueueEmbed(player, page);

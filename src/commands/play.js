@@ -26,10 +26,10 @@ module.exports = {
       let player = client.moon.players.get(message.guild.id);
       if (!player) {
         player = client.moon.players.create({
-          guildId:        message.guild.id,
-          voiceChannelId: voiceChannel.id,
-          textChannelId:  message.channel.id,
-          autoPlay:       false,
+          guildId:      message.guild.id,
+          voiceChannel: voiceChannel.id,
+          textChannel:  message.channel.id,
+          autoPlay:     false,
         });
         player.autoplay       = false;
         player.loop           = 'off';
@@ -37,7 +37,7 @@ module.exports = {
       }
 
       if (!player.connected) await player.connect();
-      player.textChannelId = message.channel.id;
+      player.textChannel = message.channel.id;
 
       // ── Spotify ──────────────────────────────────────────────────────────
       if (isSpotifyURL(query)) {

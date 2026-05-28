@@ -11,7 +11,7 @@ module.exports = {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No hay música en cola.')] });
 
     const vc = message.member.voice.channel;
-    if (!vc || vc.id !== player.voiceChannelId) return;
+    if (!vc || vc.id !== player.voiceChannel) return;
 
     const fakeQueue = { getNowPlaying: () => ({ requestedBy: { id: player.requester } }), voiceChannel: vc };
     const { allowed, reason } = canControl(message.member, fakeQueue, 'l!resume');

@@ -18,7 +18,7 @@ module.exports = {
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No hay nada reproduciéndose.')] });
 
     const vc = message.member.voice.channel;
-    if (!vc || vc.id !== player.voiceChannelId) return;
+    if (!vc || vc.id !== player.voiceChannel) return;
 
     const info = track.info;
     message.reply({ embeds: [
