@@ -23,33 +23,6 @@ try {
   console.warn('⚠️ No se pudo actualizar yt-dlp:', e.message);
 }
 
-// ── Arrancar servidor PO Token (evita bloqueos de YouTube en servidores) ─────
-const potProviderPath = path.join(__dirname, '..', 'node_modules/bgutil-ytdlp-pot-provider/build/server.js');
-if (fs.existsSync(potProviderPath)) {
-  try {
-    const { spawn: spawnProc } = require('child_process');
-    const potServer = spawnProc(process.execPath, [potProviderPath, '--port', '4416'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
-    });
-    potServer.stdout.on('data', d => {
-      const msg = d.toString().trim();
-      if (msg) console.log(`[POT] ${msg}`);
-    });
-    potServer.stderr.on('data', d => {
-      const msg = d.toString().trim();
-      if (msg) console.log(`[POT] ${msg}`);
-    });
-    potServer.on('exit', code => console.warn(`[POT] Servidor terminó con código ${code}`));
-    // Dar tiempo al servidor para arrancar
-    execSync('sleep 2');
-    console.log('🔑 Servidor PO Token iniciado en puerto 4416');
-  } catch (e) {
-    console.warn('⚠️ No se pudo iniciar servidor PO Token:', e.message);
-  }
-} else {
-  console.warn('⚠️ bgutil-ytdlp-pot-provider no encontrado');
-}
 
 // ── Escribir cookies desde variable de entorno ───────────────────────────────
 const cookiesPath = path.join(process.cwd(), 'cookies.txt');
