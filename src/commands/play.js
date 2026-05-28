@@ -1,169 +1,141 @@
-const { joinVoiceChannel, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
-const yts = require('yt-search');
-const GuildQueue = require('../GuildQueue');
+const { EmbedBuilder } = require('discord.js');
 const spotify = require('../spotify');
-const { hasPriorityToPlay } = require('./priority');
 
-function isYouTubeURL(str) {
-  return /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)/.test(str);
-}
-
-function extractYouTubeID(url) {
-  const match = url.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/);
-  return match ? match[1] : null;
-}
+function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
 module.exports = {
   name: 'play',
   aliases: ['p'],
   description: 'Reproduce música de YouTube o Spotify',
   async execute(message, args, client) {
-    const queueKey = `${message.guild.id}-${client.user.id}`;
-
-    if (!args.length) {
+    if (!args.length)
       return message.reply('❌ Escribe el nombre o URL de una canción. Ej: `l!play despacito`');
-    }
 
     const voiceChannel = message.member?.voice?.channel;
     if (!voiceChannel) return message.reply('🎤 Debes estar en un canal de voz primero.');
 
-    const permissions = voiceChannel.permissionsFor(message.client.user);
-    if (!permissions.has('Connect') || !permissions.has('Speak')) {
+    const perms = voiceChannel.permissionsFor(message.client.user);
+    if (!perms.has('Connect') || !perms.has('Speak'))
       return message.reply('❌ No tengo permisos para unirme o hablar en ese canal.');
-    }
 
-    const canPlay = await hasPriorityToPlay(message, client);
-
-if (!canPlay) return;
-
-    const query = args.join(' ');
+    const query      = args.join(' ');
     const loadingMsg = await message.reply('🔍 Buscando...');
 
     try {
-      let queue = client.queues.get(queueKey);
-      if (!queue) {
-        const connection = joinVoiceChannel({
-          channelId: voiceChannel.id,
-          guildId: message.guild.id,
-          adapterCreator: message.guild.voiceAdapterCreator,
+      // Obtener o crear player de Lavalink
+      let player = client.moon.players.get(message.guild.id);
+      if (!player) {
+        player = client.moon.players.create({
+          guildId:        message.guild.id,
+          voiceChannelId: voiceChannel.id,
+          textChannelId:  message.channel.id,
+          autoPlay:       false,
         });
-        try {
-          await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-        } catch {
-          connection.destroy();
-          return loadingMsg.edit('❌ No pude conectarme al canal de voz.');
-        }
-        queue = new GuildQueue(voiceChannel, message.channel, connection);
-        client.queues.set(queueKey, queue);
-        connection.on(VoiceConnectionStatus.Disconnected, () => {
-          client.queues.delete(queueKey);
-        });
+        player.autoplay       = false;
+        player.loop           = 'off';
+        player.nowPlayingMsgId = null;
       }
 
-      // ── Spotify ──
-      if (query.includes('open.spotify.com')) {
-        const spotifyType = spotify.getSpotifyType(query);
-        if (!spotifyType) return loadingMsg.edit('❌ URL de Spotify no válida.');
+      if (!player.connected) await player.connect();
+      player.textChannelId = message.channel.id;
 
-        if (spotifyType === 'track') {
+      // ── Spotify ──────────────────────────────────────────────────────────
+      if (isSpotifyURL(query)) {
+        const type = spotify.getSpotifyType(query);
+        if (!type) return loadingMsg.edit('❌ URL de Spotify no válida.');
+
+        if (type === 'track') {
           await loadingMsg.edit('🟢 Obteniendo canción de Spotify...');
           const [trackInfo] = await spotify.getTrack(query);
-          const songInfo = await searchYouTube(trackInfo, message.author);
-          if (!songInfo) return loadingMsg.edit(`❌ No encontré "${trackInfo.title}" en YouTube.`);
-          await queue.addSong(songInfo);
-          if (queue.songs.length > 1) await loadingMsg.edit(`➕ **${songInfo.title}** añadido a la cola.`);
-          else await loadingMsg.delete().catch(() => {});
+          const res = await client.moon.search({ query: trackInfo.searchQuery, source: 'youtube' });
+          if (!res.tracks?.length) return loadingMsg.edit(`❌ No encontré "${trackInfo.title}" en YouTube.`);
 
-        } else if (spotifyType === 'playlist') {
+          const track = res.tracks[0];
+          track.info.title = trackInfo.title;
+          player.requester = message.author.id;
+          player.queue.add(track);
+          if (!player.playing) player.play();
+
+          if (player.queue.size > 0 || player.playing)
+            await loadingMsg.edit(`➕ **${trackInfo.title}** añadido a la cola.`);
+          else
+            await loadingMsg.delete().catch(() => {});
+
+        } else if (type === 'playlist') {
           await loadingMsg.edit('🟢 Cargando playlist de Spotify...');
           const { tracks, playlistName, total } = await spotify.getPlaylist(query);
           await loadingMsg.edit(`📋 Cargando **${playlistName}** — ${total} canciones...`);
 
           let added = 0;
-          // Añadir primera canción y reproducir de inmediato
           for (const t of tracks) {
-            const s = await searchYouTube(t, message.author);
-            if (s) {
-              await queue.addSong(s, added > 0); // silent después de la primera
+            const res = await client.moon.search({ query: t.searchQuery, source: 'youtube' });
+            if (res.tracks?.length) {
+              const track = res.tracks[0];
+              track.info.title = t.title;
+              player.requester = message.author.id;
+              player.queue.add(track);
+              if (!player.playing) player.play();
               added++;
             }
           }
-          await loadingMsg.edit(`✅ Playlist **${playlistName}** — ${added}/${total} canciones añadidas a la cola.`);
+          await loadingMsg.edit(`✅ Playlist **${playlistName}** — ${added}/${total} canciones añadidas.`);
 
-        } else if (spotifyType === 'album') {
+        } else if (type === 'album') {
           await loadingMsg.edit('🟢 Cargando álbum de Spotify...');
           const { tracks, albumName, total } = await spotify.getAlbum(query);
           await loadingMsg.edit(`💿 Cargando **${albumName}** — ${total} canciones...`);
 
           let added = 0;
           for (const t of tracks) {
-            const s = await searchYouTube(t, message.author);
-            if (s) {
-              await queue.addSong(s, added > 0);
+            const res = await client.moon.search({ query: t.searchQuery, source: 'youtube' });
+            if (res.tracks?.length) {
+              const track = res.tracks[0];
+              track.info.title = t.title;
+              player.requester = message.author.id;
+              player.queue.add(track);
+              if (!player.playing) player.play();
               added++;
             }
           }
           await loadingMsg.edit(`✅ Álbum **${albumName}** — ${added}/${total} canciones añadidas.`);
         }
 
-      // ── URL de YouTube ──
-      } else if (isYouTubeURL(query)) {
-        const videoId = extractYouTubeID(query);
-        if (!videoId) return loadingMsg.edit('❌ URL de YouTube no válida.');
-
-        const result = await yts({ videoId });
-        const songInfo = {
-          title: result.title || 'Canción de YouTube',
-          url: `https://www.youtube.com/watch?v=${videoId}`,
-          duration: result.timestamp || '??:??',
-          requestedBy: message.author,
-        };
-
-        await queue.addSong(songInfo);
-        if (queue.songs.length > 1) {
-          await loadingMsg.edit(`➕ **${songInfo.title}** (${songInfo.duration}) añadido a la cola.`);
-        } else {
-          await loadingMsg.delete().catch(() => {});
-        }
-
-      // ── Búsqueda por texto ──
+      // ── YouTube / búsqueda ───────────────────────────────────────────────
       } else {
-        const results = await yts(query);
-        const video = results.videos[0];
-        if (!video) return loadingMsg.edit('❌ No se encontraron resultados.');
+        const source = query.startsWith('http') ? undefined : 'youtube';
+        const res    = await client.moon.search({ query, source });
 
-        const songInfo = {
-          title: video.title,
-          url: video.url,
-          duration: video.timestamp,
-          requestedBy: message.author,
-        };
+        if (!res.tracks?.length) return loadingMsg.edit('❌ No se encontraron resultados.');
 
-        await queue.addSong(songInfo);
-        if (queue.songs.length > 1) {
-          await loadingMsg.edit(`➕ **${songInfo.title}** (${songInfo.duration}) añadido a la cola.`);
+        player.requester = message.author.id;
+
+        if (res.loadType === 'playlist') {
+          for (const track of res.tracks) player.queue.add(track);
+          if (!player.playing) player.play();
+          await loadingMsg.edit(`✅ Playlist **${res.playlistInfo?.name || 'Sin nombre'}** — ${res.tracks.length} canciones añadidas.`);
         } else {
-          await loadingMsg.delete().catch(() => {});
+          const track = res.tracks[0];
+          player.queue.add(track);
+          if (!player.playing) player.play();
+
+          const wasPlaying = player.playing && player.queue.size > 0;
+          if (wasPlaying) {
+            await loadingMsg.edit(`➕ **${track.info.title}** (${formatMs(track.info.length)}) añadido a la cola.`);
+          } else {
+            await loadingMsg.delete().catch(() => {});
+          }
         }
       }
 
     } catch (err) {
-      console.error('Error en play:', err.message);
+      console.error('Error en play:', err);
       loadingMsg.edit('❌ Ocurrió un error. Revisa la consola para más detalles.');
     }
   },
 };
 
-async function searchYouTube(trackInfo, author) {
-  try {
-    const results = await yts(trackInfo.searchQuery);
-    const video = results.videos[0];
-    if (!video) return null;
-    return {
-      title: trackInfo.title,
-      url: video.url,
-      duration: trackInfo.duration,
-      requestedBy: author,
-    };
-  } catch { return null; }
+function formatMs(ms) {
+  if (!ms) return '??:??';
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }

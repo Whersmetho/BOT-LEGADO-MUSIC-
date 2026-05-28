@@ -1,14 +1,9 @@
 const { EmbedBuilder } = require('discord.js');
 
-function extractID(url) {
-  const match = url?.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/);
-  return match ? match[1] : '';
-}
-
-function formatRequester(requestedBy) {
-  if (!requestedBy) return 'Desconocido';
-  if (typeof requestedBy === 'string') return requestedBy;
-  return `<@${requestedBy.id}>`;
+function formatMs(ms) {
+  if (!ms) return '??:??';
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
 module.exports = {
@@ -16,35 +11,32 @@ module.exports = {
   aliases: ['np'],
   description: 'Muestra la canción actual',
   async execute(message, args, client) {
-    const queueKey = `${message.guild.id}-${client.user.id}`;
-    const queue = client.queues.get(queueKey);
-    const song = queue?.getNowPlaying();
+    const player = client.moon.players.get(message.guild.id);
+    const track  = player?.current;
 
-    if (!song) {
+    if (!track)
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No hay nada reproduciéndose.')] });
-    }
 
-    const userChannel = message.member.voice.channel;
-    if (!userChannel || userChannel.id !== queue.voiceChannel.id) return;
+    const vc = message.member.voice.channel;
+    if (!vc || vc.id !== player.voiceChannelId) return;
 
-    message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor('#9B59B6')
-          .setAuthor({ name: '🎵 Sonando ahora' })
-          .setTitle(song.title)
-          .setURL(song.url)
-          .setThumbnail(`https://img.youtube.com/vi/${extractID(song.url)}/hqdefault.jpg`)
-          .addFields(
-            { name: '⏱️ Duración', value: song.duration || '??:??', inline: true },
-            { name: '🎧 Pedido por', value: formatRequester(song.requestedBy), inline: true },
-            { name: '🔁 Bucle', value: queue.loop ? 'Activado' : 'Desactivado', inline: true },
-            { name: '🔀 Autoplay', value: queue.autoplay ? 'Activado' : 'Desactivado', inline: true },
-            { name: '📋 En cola', value: `${queue.getQueue().length} canciones`, inline: true },
-          )
-          .setFooter({ text: 'LEGADO MUSIC' })
-          .setTimestamp()
-      ]
-    });
+    const info = track.info;
+    message.reply({ embeds: [
+      new EmbedBuilder()
+        .setColor('#9B59B6')
+        .setAuthor({ name: '🎵 Sonando ahora' })
+        .setTitle(info.title)
+        .setURL(info.uri)
+        .setThumbnail(info.artworkUrl || `https://img.youtube.com/vi/${info.identifier}/hqdefault.jpg`)
+        .addFields(
+          { name: '⏱️ Duración',  value: formatMs(info.length), inline: true },
+          { name: '🎧 Pedido por', value: player.requester ? `<@${player.requester}>` : 'Desconocido', inline: true },
+          { name: '🔁 Bucle',     value: player.loop === 'track' ? 'Activado' : 'Desactivado', inline: true },
+          { name: '🔀 Autoplay',  value: player.autoplay ? 'Activado' : 'Desactivado', inline: true },
+          { name: '📋 En cola',   value: `${player.queue.size} canciones`, inline: true },
+        )
+        .setFooter({ text: 'LEGADO MUSIC' })
+        .setTimestamp()
+    ]});
   },
 };

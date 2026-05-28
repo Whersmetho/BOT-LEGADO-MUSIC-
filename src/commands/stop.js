@@ -3,30 +3,25 @@ const { canStop } = require('../permissions');
 
 module.exports = {
   name: 'stop',
-  description: 'Detiene la música y limpia la cola (solo DJ/Admin)',
+  description: 'Detiene la música y limpia la cola',
   async execute(message, args, client) {
-    const queue = client.queues.get(`${message.guild.id}-${client.user.id}`);
-    if (!queue) {
+    const player = client.moon.players.get(message.guild.id);
+    if (!player)
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No hay música en cola.')] });
-    }
 
-    const userChannel = message.member.voice.channel;
-    if (!userChannel || userChannel.id !== queue.voiceChannel.id) return;
+    const vc = message.member.voice.channel;
+    if (!vc || vc.id !== player.voiceChannelId) return;
 
-    const { allowed, reason } = canStop(message.member, queue);
-    if (!allowed) {
-      return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription(reason)] });
-    }
+    const fakeQueue = { voiceChannel: vc };
+    const { allowed, reason } = canStop(message.member, fakeQueue);
+    if (!allowed) return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription(reason)] });
 
-    queue.stop();
-    client.queues.delete(`${message.guild.id}-${client.user.id}`);
-    message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor('#E74C3C')
-          .setDescription('⏹️ **Música detenida y cola limpiada.**')
-          .setFooter({ text: `Detenido por ${message.author.username} • LEGADO MUSIC` })
-      ]
-    });
+    player.destroy();
+    message.reply({ embeds: [
+      new EmbedBuilder()
+        .setColor('#E74C3C')
+        .setDescription('⏹️ **Música detenida y cola limpiada.**')
+        .setFooter({ text: `Detenido por ${message.author.username} • LEGADO MUSIC` })
+    ]});
   },
 };

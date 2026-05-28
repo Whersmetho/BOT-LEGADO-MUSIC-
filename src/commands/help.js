@@ -26,27 +26,19 @@ module.exports = {
             '`l!queue` — Ver la cola con paginación interactiva',
             '`l!nowplaying` — Ver qué está sonando',
             '`l!loop` — Activar/desactivar bucle',
-            '`l!autoplay` — Activar/desactivar autoplay',
+            '`l!autoplay` — Reproducir canciones relacionadas automáticamente',
           ].join('\n'),
         },
         {
-          name: '🔌 Conexión',
-          value: '`l!leave` — Desconectar el bot del canal de voz',
+          name: '🔧 Utilidad',
+          value: [
+            '`l!leave` — Desconectar el bot del canal de voz',
+            '`l!automod` — Configurar el sistema de moderación automática',
+            '`l!help` — Ver este mensaje',
+          ].join('\n'),
         },
-        {
-          name: '🛡️ Moderación',
-          value: '`l!automod` — Ver estado del AutoMod (bloquea links adultos)',
-        },
-        {
-          name: '⚡ Aliases rápidos',
-          value: '`l!p` `l!s` `l!q` `l!np` `l!r` `l!ap` `l!dc` `l!h`',
-        },
-        {
-          name: '🎮 Botones interactivos',
-          value: 'Cada canción tiene botones de ⏸️ ⏭️ ⏹️ 🔁 🔀 directamente en el embed.',
-        }
       )
-      .setFooter({ text: 'LEGADO MUSIC • Soporta YouTube y Spotify' })
+      .setFooter({ text: 'LEGADO MUSIC • Prefijo: l!' })
       .setTimestamp();
 
     message.reply({ embeds: [embed] });

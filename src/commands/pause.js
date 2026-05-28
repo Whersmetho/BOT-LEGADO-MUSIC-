@@ -5,27 +5,23 @@ module.exports = {
   name: 'pause',
   description: 'Pausa la reproducción',
   async execute(message, args, client) {
-    const queue = client.queues.get(`${message.guild.id}-${client.user.id}`);
-    if (!queue || queue.songs.length === 0) {
+    const player = client.moon.players.get(message.guild.id);
+    if (!player?.playing)
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No hay música reproduciéndose.')] });
-    }
 
-    const userChannel = message.member.voice.channel;
-    if (!userChannel || userChannel.id !== queue.voiceChannel.id) return;
+    const vc = message.member.voice.channel;
+    if (!vc || vc.id !== player.voiceChannelId) return;
 
-    const { allowed, reason } = canControl(message.member, queue, 'l!pause');
-    if (!allowed) {
-      return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription(reason)] });
-    }
+    const fakeQueue = { getNowPlaying: () => ({ requestedBy: { id: player.requester } }), voiceChannel: vc };
+    const { allowed, reason } = canControl(message.member, fakeQueue, 'l!pause');
+    if (!allowed) return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription(reason)] });
 
-    const paused = queue.pause();
-    message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor('#F39C12')
-          .setDescription(paused ? '⏸️ **Música pausada.**' : '⚠️ **Ya estaba pausada.**')
-          .setFooter({ text: 'LEGADO MUSIC' })
-      ]
-    });
+    player.pause();
+    message.reply({ embeds: [
+      new EmbedBuilder()
+        .setColor('#F39C12')
+        .setDescription('⏸️ **Música pausada.**')
+        .setFooter({ text: 'LEGADO MUSIC' })
+    ]});
   },
 };

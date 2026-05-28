@@ -1,67 +1,46 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-function extractID(url) {
-  const match = url?.match(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/);
-  return match ? match[1] : '';
+function formatMs(ms) {
+  if (!ms) return '??:??';
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
-function formatRequester(requestedBy) {
-  if (!requestedBy) return 'Desconocido';
-  if (typeof requestedBy === 'string') return requestedBy;
-  return `<@${requestedBy.id}>`;
-}
-
-function buildQueueEmbed(queue, page) {
-  const now = queue.getNowPlaying();
-  const upcoming = queue.getQueue();
-  const perPage = 10;
-  const totalPages = Math.max(1, Math.ceil(upcoming.length / perPage));
-  const safePage = Math.min(Math.max(0, page), totalPages - 1);
-  const start = safePage * perPage;
-  const slice = upcoming.slice(start, start + perPage);
+function buildQueueEmbed(player, page) {
+  const now      = player.current;
+  const upcoming = player.queue.tracks || [];
+  const perPage  = 10;
+  const total    = Math.max(1, Math.ceil(upcoming.length / perPage));
+  const safePage = Math.min(Math.max(0, page), total - 1);
+  const slice    = upcoming.slice(safePage * perPage, safePage * perPage + perPage);
 
   const embed = new EmbedBuilder()
     .setColor('#9B59B6')
     .setAuthor({ name: '📋 Cola de reproducción' })
-    .setThumbnail(`https://img.youtube.com/vi/${extractID(now.url)}/hqdefault.jpg`)
-    .setFooter({ text: `LEGADO MUSIC • Página ${safePage + 1}/${totalPages} • ${upcoming.length + 1} canción(es)` })
+    .setThumbnail(now?.info?.artworkUrl || `https://img.youtube.com/vi/${now?.info?.identifier}/hqdefault.jpg`)
+    .setFooter({ text: `LEGADO MUSIC • Página ${safePage + 1}/${total} • ${upcoming.length + 1} canción(es)` })
     .setTimestamp();
 
   embed.addFields({
     name: '▶️ Reproduciendo ahora',
-    value: `[${now.title}](${now.url}) • \`${now.duration}\` • ${formatRequester(now.requestedBy)}`,
+    value: `[${now?.info?.title || '?'}](${now?.info?.uri || '#'}) • \`${formatMs(now?.info?.length)}\` • ${player.requester ? `<@${player.requester}>` : 'Desconocido'}`,
   });
 
   if (slice.length > 0) {
     embed.addFields({
       name: '⏭️ A continuación',
-      value: slice.map((s, i) =>
-        `\`${start + i + 1}.\` [${s.title}](${s.url}) • \`${s.duration}\` • ${formatRequester(s.requestedBy)}`
+      value: slice.map((t, i) =>
+        `\`${safePage * perPage + i + 1}.\` [${t.info.title}](${t.info.uri}) • \`${formatMs(t.info.length)}\``
       ).join('\n'),
     });
   } else {
     embed.addFields({ name: '⏭️ A continuación', value: '_No hay más canciones en cola._' });
   }
 
-  if (queue.loop) embed.addFields({ name: '🔁 Bucle', value: 'Activado', inline: true });
-  if (queue.autoplay) embed.addFields({ name: '🔀 Autoplay', value: 'Activado', inline: true });
+  if (player.loop === 'track') embed.addFields({ name: '🔁 Bucle', value: 'Activado', inline: true });
+  if (player.autoplay)         embed.addFields({ name: '🔀 Autoplay', value: 'Activado', inline: true });
 
-  return { embed, totalPages, safePage };
-}
-
-function buildQueueButtons(page, totalPages) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`queue_prev_${page}`)
-      .setEmoji('◀️')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page === 0),
-    new ButtonBuilder()
-      .setCustomId(`queue_next_${page}`)
-      .setEmoji('▶️')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= totalPages - 1),
-  );
+  return { embed, totalPages: total, safePage };
 }
 
 module.exports = {
@@ -69,40 +48,39 @@ module.exports = {
   aliases: ['q'],
   description: 'Muestra la cola de canciones',
   async execute(message, args, client) {
-    const queueKey = `${message.guild.id}-${client.user.id}`;
-    const queue = client.queues.get(queueKey);
-
-    if (!queue || queue.songs.length === 0) {
+    const player = client.moon.players.get(message.guild.id);
+    if (!player?.current)
       return message.reply({ embeds: [new EmbedBuilder().setColor('#E74C3C').setDescription('📭 **La cola está vacía.**')] });
-    }
 
-    const userChannel = message.member.voice.channel;
-    if (!userChannel || userChannel.id !== queue.voiceChannel.id) return;
+    const vc = message.member.voice.channel;
+    if (!vc || vc.id !== player.voiceChannelId) return;
 
     let page = 0;
-    const { embed, totalPages, safePage } = buildQueueEmbed(queue, page);
-    const components = totalPages > 1 ? [buildQueueButtons(safePage, totalPages)] : [];
+    const { embed, totalPages, safePage } = buildQueueEmbed(player, page);
 
-    const reply = await message.reply({ embeds: [embed], components });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('queue_prev').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId('queue_next').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(totalPages <= 1),
+    );
 
+    const reply = await message.reply({ embeds: [embed], components: totalPages > 1 ? [row] : [] });
     if (totalPages <= 1) return;
 
     const collector = reply.createMessageComponentCollector({ time: 60000 });
-
     collector.on('collect', async (i) => {
-      if (i.user.id !== message.author.id) {
+      if (i.user.id !== message.author.id)
         return i.reply({ content: '❌ Solo quien ejecutó el comando puede cambiar la página.', ephemeral: true });
-      }
 
-      if (i.customId.startsWith('queue_prev_')) page = Math.max(0, page - 1);
-      if (i.customId.startsWith('queue_next_')) page = Math.min(totalPages - 1, page + 1);
+      if (i.customId === 'queue_prev') page = Math.max(0, page - 1);
+      if (i.customId === 'queue_next') page = Math.min(totalPages - 1, page + 1);
 
-      const { embed: newEmbed, totalPages: tp, safePage: sp } = buildQueueEmbed(queue, page);
-      await i.update({ embeds: [newEmbed], components: [buildQueueButtons(sp, tp)] });
+      const { embed: e, totalPages: tp, safePage: sp } = buildQueueEmbed(player, page);
+      const newRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('queue_prev').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(sp === 0),
+        new ButtonBuilder().setCustomId('queue_next').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(sp >= tp - 1),
+      );
+      await i.update({ embeds: [e], components: [newRow] });
     });
-
-    collector.on('end', () => {
-      reply.edit({ components: [] }).catch(() => {});
-    });
+    collector.on('end', () => reply.edit({ components: [] }).catch(() => {}));
   },
 };
