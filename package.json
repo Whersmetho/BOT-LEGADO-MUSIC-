@@ -9,6 +9,7 @@
     "discord.js": "^14.26.4",
     "moonlink.js": "3.6.64",
     "dotenv": "^16.4.5",
-    "spotify-web-api-node": "^5.0.2"
+    "spotify-web-api-node": "^5.0.2",
+    "yt-search": "^2.10.4"
   }
 }

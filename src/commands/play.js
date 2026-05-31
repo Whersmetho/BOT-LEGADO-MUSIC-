@@ -22,7 +22,6 @@ module.exports = {
     const loadingMsg = await message.reply('🔍 Buscando...');
 
     try {
-      // Obtener o crear player de Lavalink
       let player = client.moon.players.get(message.guild.id);
       if (!player) {
         player = client.moon.players.create({
@@ -31,8 +30,8 @@ module.exports = {
           textChannel:  message.channel.id,
           autoPlay:     false,
         });
-        player.autoplay       = false;
-        player.loop = false;
+        player.autoplay        = false;
+        player.loop            = false;
         player.nowPlayingMsgId = null;
       }
 
@@ -118,8 +117,7 @@ module.exports = {
           player.queue.add(track);
           if (!player.playing) player.play();
 
-          const wasPlaying = player.playing && player.queue.size > 0;
-          if (wasPlaying) {
+          if (player.playing && player.queue.size > 0) {
             await loadingMsg.edit(`➕ **${track.info.title}** (${formatMs(track.info.length)}) añadido a la cola.`);
           } else {
             await loadingMsg.delete().catch(() => {});
@@ -129,7 +127,7 @@ module.exports = {
 
     } catch (err) {
       console.error('Error en play:', err);
-      loadingMsg.edit('❌ Ocurrió un error. Revisa la consola para más detalles.');
+      loadingMsg.edit('❌ Ocurrió un error. Revisa la consola para más detalles.').catch(() => {});
     }
   },
 };

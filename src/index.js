@@ -7,20 +7,44 @@ const path = require('path');
 const { initSpotify } = require('./spotify');
 const { handleMessage: automodHandle } = require('./commands/automod');
 
+// ── FIX 1: Manejo global de errores — evita crashes por promesas no manejadas ─
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled Rejection:', err?.message || err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err?.message || err);
+});
+
 const token               = process.env.TOKEN?.trim();
 const spotifyClientId     = process.env.SPOTIFY_CLIENT_ID;
 const spotifyClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
 if (!token) { console.error('❌ TOKEN no encontrado'); process.exit(1); }
 
-// ── Nodos de Lavalink (públicos y gratuitos) ─────────────────────────────────
-// Puedes agregar más nodos de https://lavalink-list.autm.dev
+// ── FIX 2: Cookies desde variable de entorno (no hardcodeadas en archivo) ─────
+const cookiesPath = path.join(process.cwd(), 'cookies.txt');
+const cookiesEnv  = process.env.YOUTUBE_COOKIES;
+
+if (cookiesEnv) {
+  try {
+    const content = cookiesEnv.replace(/\\n/g, '\n');
+    fs.writeFileSync(cookiesPath, content, 'utf8');
+    const lines = content.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
+    console.log(`🍪 cookies.txt escrito — ${lines} entradas de cookies`);
+  } catch (e) {
+    console.error('❌ Error escribiendo cookies.txt:', e.message);
+  }
+} else {
+  console.warn('⚠️ YOUTUBE_COOKIES no definida — YouTube puede bloquear las descargas');
+}
+
+// ── Nodos de Lavalink ─────────────────────────────────────────────────────────
 const LAVALINK_NODES = [
   {
     host:     process.env.LAVALINK_HOST     || 'lavalink.jirayu.net',
-    port:     parseInt(process.env.LAVALINK_PORT)     || 13592,
+    port:     parseInt(process.env.LAVALINK_PORT) || 13592,
     password: process.env.LAVALINK_PASSWORD || 'youshallnotpass',
-    secure:   false,
+    secure:   process.env.LAVALINK_SECURE === 'true' ? true : false,
   },
 ];
 
@@ -37,7 +61,7 @@ const client = new Client({
 client.commands = new Collection();
 client.aliases  = new Collection();
 
-// ── Cargar comandos ──────────────────────────────────────────────────────────
+// ── Cargar comandos ───────────────────────────────────────────────────────────
 const commandsPath = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
   const cmd = require(path.join(commandsPath, file));
@@ -46,7 +70,7 @@ for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) 
   if (cmd.aliases) cmd.aliases.forEach(a => client.aliases.set(a, cmd.name));
 }
 
-// ── Moonlink (Lavalink) ──────────────────────────────────────────────────────
+// ── Moonlink (Lavalink) ───────────────────────────────────────────────────────
 client.moon = new MoonlinkManager(
   LAVALINK_NODES,
   { clientName: 'LEGADO MUSIC' },
@@ -61,13 +85,29 @@ client.moon.on('nodeCreate', node =>
   console.log(`🟢 Nodo Lavalink conectado: ${node.host}:${node.port}`)
 );
 client.moon.on('nodeError', (node, err) =>
-  console.error(`❌ Error en nodo ${node.host}:`, err.message)
-);
-client.moon.on('nodeDestroy', node =>
-  console.warn(`🔴 Nodo destruido: ${node.host}`)
+  console.error(`❌ Error en nodo ${node.host}:`, err?.message || err)
 );
 
-// Cuando termina una canción → reproducir la siguiente
+// ── FIX 3: Reconexión automática cuando el nodo se destruye (Render duerme) ──
+client.moon.on('nodeDestroy', node => {
+  console.warn(`🔴 Nodo destruido: ${node.host} — reconectando en 10s...`);
+  setTimeout(() => {
+    try { client.moon.init(client.user.id); } catch {}
+  }, 10000);
+});
+
+// ── FIX 4: Keep-alive — detecta nodo caído y reconecta cada 60s ───────────────
+setInterval(() => {
+  try {
+    const node = [...(client.moon.nodes?.values() || [])][0];
+    if (node && !node.connected) {
+      console.log('🔄 Reintentando conexión a Lavalink...');
+      client.moon.init(client.user.id);
+    }
+  } catch {}
+}, 60_000);
+
+// ── Cuando termina una canción → reproducir la siguiente ─────────────────────
 client.moon.on('trackEnd', async (player, track) => {
   const textChannel = client.channels.cache.get(player.textChannel);
   if (!textChannel) return;
@@ -98,16 +138,18 @@ client.moon.on('trackEnd', async (player, track) => {
 
   // Cola vacía
   player.playing = false;
-  textChannel.send({ embeds: [
-    new EmbedBuilder()
-      .setColor('#2ECC71')
-      .setDescription('✅ **Cola vacía. ¡Hasta la próxima!**')
-      .setFooter({ text: 'LEGADO MUSIC' })
-  ]});
+  try {
+    textChannel.send({ embeds: [
+      new EmbedBuilder()
+        .setColor('#2ECC71')
+        .setDescription('✅ **Cola vacía. ¡Hasta la próxima!**')
+        .setFooter({ text: 'LEGADO MUSIC' })
+    ]});
+  } catch {}
   setTimeout(() => { try { player.destroy(); } catch {} }, 30000);
 });
 
-// Cuando empieza una canción → mostrar embed
+// ── Cuando empieza una canción → mostrar embed ────────────────────────────────
 client.moon.on('trackStart', async (player, track) => {
   const textChannel = client.channels.cache.get(player.textChannel);
   if (!textChannel) return;
@@ -125,13 +167,15 @@ client.moon.on('trackError', async (player, track, err) => {
   console.error('Track error:', err);
   const textChannel = client.channels.cache.get(player.textChannel);
   if (textChannel) {
-    textChannel.send({ embeds: [
-      new EmbedBuilder().setColor('#E74C3C').setDescription('❌ **Error al reproducir esta canción. Saltando...**')
-    ]});
+    try {
+      textChannel.send({ embeds: [
+        new EmbedBuilder().setColor('#E74C3C').setDescription('❌ **Error al reproducir esta canción. Saltando...**')
+      ]});
+    } catch {}
   }
 });
 
-// ── Ready ────────────────────────────────────────────────────────────────────
+// ── Ready ─────────────────────────────────────────────────────────────────────
 client.once('ready', () => {
   console.log(`✅ Bot listo como ${client.user.tag}`);
   client.user.setActivity('🎵 l!help para comandos');
@@ -146,9 +190,12 @@ client.once('ready', () => {
 // ── Necesario para que Lavalink reciba eventos de voz ────────────────────────
 client.on('raw', data => client.moon.packetUpdate(data));
 
-// ── Botones interactivos ─────────────────────────────────────────────────────
+// ── Botones interactivos ──────────────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
+
+  const musicButtons = ['btn_pause', 'btn_skip', 'btn_stop', 'btn_loop', 'btn_autoplay'];
+  if (!musicButtons.includes(interaction.customId)) return;
 
   const player = client.moon.players.get(interaction.guild.id);
   if (!player) return interaction.reply({ content: '❌ No hay música reproduciéndose.', ephemeral: true });
@@ -173,7 +220,7 @@ client.on('interactionCreate', async (interaction) => {
       interaction.followUp({ content: '⏹️ Música detenida.', ephemeral: true });
       break;
     case 'btn_loop':
-      player.loop = player.loop ? false : true;
+      player.loop = !player.loop;
       interaction.followUp({ content: player.loop ? '🔁 Bucle activado.' : '➡️ Bucle desactivado.', ephemeral: true });
       break;
     case 'btn_autoplay':
@@ -183,7 +230,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// ── Mensajes ─────────────────────────────────────────────────────────────────
+// ── Mensajes ──────────────────────────────────────────────────────────────────
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   await automodHandle(message, client);
@@ -202,13 +249,13 @@ client.on('messageCreate', async (message) => {
     await command.execute(message, args, client);
   } catch (err) {
     console.error(`❌ Error en ${commandName}:`, err);
-    message.reply('❌ Ocurrió un error ejecutando ese comando.');
+    message.reply('❌ Ocurrió un error ejecutando ese comando.').catch(() => {});
   }
 });
 
 client.login(token).catch(err => console.error('❌ Error al iniciar sesión:', err));
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function nowPlayingEmbed(track, player) {
   const info = track.info || track;
   return new EmbedBuilder()
@@ -266,9 +313,11 @@ async function playRelated(player, track, textChannel) {
     player.queue.add(related);
     player.play();
   } catch {
-    textChannel.send({ embeds: [
-      new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No encontré canciones relacionadas.')
-    ]});
+    try {
+      textChannel.send({ embeds: [
+        new EmbedBuilder().setColor('#E74C3C').setDescription('❌ No encontré canciones relacionadas.')
+      ]});
+    } catch {}
     setTimeout(() => { try { player.destroy(); } catch {} }, 30000);
   }
 }
