@@ -3,23 +3,12 @@ const spotify = require('../spotify');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
-// Helper: obtiene los nodos de forma compatible con Map y objeto plano
-function getNodes(moon) {
-  if (!moon?.nodes) return [];
-  try {
-    if (typeof moon.nodes.values === 'function') return [...moon.nodes.values()];
-    return Object.values(moon.nodes);
-  } catch {
-    return [];
-  }
-}
-
 // Espera hasta que Lavalink esté conectado (máx 15s)
 function waitForLavalink(client, timeout = 15000) {
   return new Promise((resolve, reject) => {
     // Ya está listo
     try {
-      const nodes = getNodes(client.moon);
+      const nodes = [...(client.moon.nodes?.values() || [])];
       if (nodes.some(n => n.connected)) return resolve();
     } catch {}
 
@@ -56,7 +45,7 @@ module.exports = {
 
     try {
       // Esperar a que Lavalink esté conectado antes de crear el player
-      const nodes = getNodes(client.moon);
+      const nodes = [...(client.moon.nodes?.values() || [])];
       if (!nodes.some(n => n.connected)) {
         await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
         await waitForLavalink(client, 15000);

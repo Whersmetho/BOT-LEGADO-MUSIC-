@@ -107,7 +107,9 @@ client.moon.on('nodeDestroy', node => {
 // ── FIX 4: Keep-alive — detecta nodo caído y reconecta cada 60s ───────────────
 setInterval(() => {
   try {
-    const node = [...(client.moon.nodes?.values() || [])][0];
+    const _nodeMap = client.moon.nodes;
+    const _nodeList = _nodeMap ? (typeof _nodeMap.values === 'function' ? [..._nodeMap.values()] : Object.values(_nodeMap)) : [];
+    const node = _nodeList[0];
     if (node && !node.connected) {
       console.log('🔄 Reintentando conexión a Lavalink...');
       client.moon.init(client.user.id);
