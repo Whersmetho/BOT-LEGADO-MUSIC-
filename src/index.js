@@ -39,14 +39,20 @@ if (cookiesEnv) {
 }
 
 // ── Nodos de Lavalink ─────────────────────────────────────────────────────────
+// Render expone el servicio en el puerto 443 (HTTPS/WSS), no en el puerto interno.
+// Si LAVALINK_SECURE=true → puerto 443. Si no, se usa LAVALINK_PORT (default 80).
+const lavalinkSecure = process.env.LAVALINK_SECURE === 'true';
 const LAVALINK_NODES = [
   {
     host:     process.env.LAVALINK_HOST     || 'lavalink.jirayu.net',
-    port:     parseInt(process.env.LAVALINK_PORT) || 13592,
+    port:     parseInt(process.env.LAVALINK_PORT) || (lavalinkSecure ? 443 : 80),
     password: process.env.LAVALINK_PASSWORD || 'youshallnotpass',
-    secure:   process.env.LAVALINK_SECURE === 'true' ? true : false,
+    secure:   lavalinkSecure,
   },
 ];
+
+// Flag global: true cuando al menos un nodo Lavalink está conectado y listo
+let lavalinkReady = false;
 
 const client = new Client({
   intents: [
@@ -81,15 +87,17 @@ client.moon = new MoonlinkManager(
 );
 
 // Eventos del manager
-client.moon.on('nodeCreate', node =>
-  console.log(`🟢 Nodo Lavalink conectado: ${node.host}:${node.port}`)
-);
+client.moon.on('nodeCreate', node => {
+  lavalinkReady = true;
+  console.log(`🟢 Nodo Lavalink conectado: ${node.host}:${node.port}`);
+});
 client.moon.on('nodeError', (node, err) =>
   console.error(`❌ Error en nodo ${node.host}:`, err?.message || err)
 );
 
 // ── FIX 3: Reconexión automática cuando el nodo se destruye (Render duerme) ──
 client.moon.on('nodeDestroy', node => {
+  lavalinkReady = false;
   console.warn(`🔴 Nodo destruido: ${node.host} — reconectando en 10s...`);
   setTimeout(() => {
     try { client.moon.init(client.user.id); } catch {}
@@ -176,10 +184,12 @@ client.moon.on('trackError', async (player, track, err) => {
 });
 
 // ── Ready ─────────────────────────────────────────────────────────────────────
-client.once('ready', () => {
+// Usar clientReady (discord.js v14) en vez del deprecated 'ready'
+client.once('clientReady', () => {
   console.log(`✅ Bot listo como ${client.user.tag}`);
   client.user.setActivity('🎵 l!help para comandos');
   client.moon.init(client.user.id);
+  console.log('🔄 Conectando a Lavalink...');
 
   if (spotifyClientId && spotifyClientSecret) {
     initSpotify(spotifyClientId, spotifyClientSecret);
@@ -254,6 +264,9 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(token).catch(err => console.error('❌ Error al iniciar sesión:', err));
+
+// Exportar el flag para que play.js lo consulte
+module.exports = { isLavalinkReady: () => lavalinkReady };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function nowPlayingEmbed(track, player) {

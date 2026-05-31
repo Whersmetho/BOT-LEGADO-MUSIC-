@@ -3,6 +3,28 @@ const spotify = require('../spotify');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
+// Espera hasta que Lavalink esté conectado (máx 15s)
+function waitForLavalink(client, timeout = 15000) {
+  return new Promise((resolve, reject) => {
+    // Ya está listo
+    try {
+      const nodes = [...(client.moon.nodes?.values() || [])];
+      if (nodes.some(n => n.connected)) return resolve();
+    } catch {}
+
+    const deadline = setTimeout(() => {
+      client.moon.off('nodeCreate', onReady);
+      reject(new Error('Lavalink no conectó a tiempo'));
+    }, timeout);
+
+    function onReady() {
+      clearTimeout(deadline);
+      resolve();
+    }
+    client.moon.once('nodeCreate', onReady);
+  });
+}
+
 module.exports = {
   name: 'play',
   aliases: ['p'],
@@ -22,6 +44,13 @@ module.exports = {
     const loadingMsg = await message.reply('🔍 Buscando...');
 
     try {
+      // Esperar a que Lavalink esté conectado antes de crear el player
+      const nodes = [...(client.moon.nodes?.values() || [])];
+      if (!nodes.some(n => n.connected)) {
+        await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
+        await waitForLavalink(client, 15000);
+      }
+
       let player = client.moon.players.get(message.guild.id);
       if (!player) {
         player = client.moon.players.create({
@@ -127,7 +156,11 @@ module.exports = {
 
     } catch (err) {
       console.error('Error en play:', err);
-      loadingMsg.edit('❌ Ocurrió un error. Revisa la consola para más detalles.').catch(() => {});
+      if (err.message?.includes('tiempo') || err.message?.includes('Lavalink')) {
+        loadingMsg.edit('❌ El servidor de música tardó demasiado en conectar. Inténtalo de nuevo en unos segundos.').catch(() => {});
+      } else {
+        loadingMsg.edit('❌ Ocurrió un error. Revisa la consola para más detalles.').catch(() => {});
+      }
     }
   },
 };
