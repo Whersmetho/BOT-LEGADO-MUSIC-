@@ -17,22 +17,34 @@ function getNodes(moon) {
 // Espera hasta que Lavalink esté conectado (máx 15s)
 function waitForLavalink(client, timeout = 15000) {
   return new Promise((resolve, reject) => {
-    // Ya está listo
-    try {
-      const nodes = getNodes(client.moon);
-      if (nodes.some(n => n.connected)) return resolve();
-    } catch {}
+    const start = Date.now();
 
-    const deadline = setTimeout(() => {
-      client.moon.off('nodeCreate', onReady);
-      reject(new Error('Lavalink no conectó a tiempo'));
-    }, timeout);
+    const check = () => {
+      try {
+        const nodes = getNodes(client.moon);
 
-    function onReady() {
-      clearTimeout(deadline);
-      resolve();
-    }
-    client.moon.once('nodeCreate', onReady);
+        if (nodes.length > 0) {
+          const node = nodes[0];
+
+          if (
+            node.connected === true ||
+            node.ws?.readyState === 1
+          ) {
+            return resolve();
+          }
+        }
+
+        if (Date.now() - start >= timeout) {
+          return reject(new Error('Lavalink no conectó a tiempo'));
+        }
+
+        setTimeout(check, 1000);
+      } catch (err) {
+        reject(err);
+      }
+    };
+
+    check();
   });
 }
 
@@ -61,6 +73,17 @@ module.exports = {
         await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
         await waitForLavalink(client, 15000);
       }
+      
+      const nodes = getNodes(client.moon);
+
+console.log(
+  'Lavalink Debug:',
+  nodes.map(n => ({
+    connected: n.connected,
+    state: n.ws?.readyState,
+    host: n.host
+  }))
+);
 
       let player = client.moon.players.get(message.guild.id);
       if (!player) {
