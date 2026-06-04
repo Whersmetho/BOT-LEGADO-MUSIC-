@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const spotify = require('../spotify');
-const { isLavalinkReady } = require('../index');
+const lavalinkState = require('../lavalinkState');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
@@ -20,7 +20,7 @@ function waitForLavalink(timeout = 45000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const check = () => {
-      if (isLavalinkReady()) return resolve();
+      if (lavalinkState.isReady()) return resolve();
       if (Date.now() - start >= timeout)
         return reject(new Error('Lavalink no conectó a tiempo'));
       setTimeout(check, 1000);
@@ -49,7 +49,7 @@ module.exports = {
 
     try {
       // Esperar a que Lavalink esté listo antes de crear el player
-if (!isLavalinkReady()) {
+if (!lavalinkState.isReady()) {
   await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
   await waitForLavalink(45000);
 }

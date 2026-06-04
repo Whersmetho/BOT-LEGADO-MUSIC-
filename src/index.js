@@ -6,6 +6,7 @@ const fs   = require('fs');
 const path = require('path');
 const { initSpotify } = require('./spotify');
 const { handleMessage: automodHandle } = require('./commands/automod');
+const lavalinkState = require('./lavalinkState');
 
 // ── FIX 1: Manejo global de errores — evita crashes por promesas no manejadas ─
 process.on('unhandledRejection', (err) => {
@@ -51,8 +52,7 @@ const LAVALINK_NODES = [
   },
 ];
 
-// Flag global: true cuando al menos un nodo Lavalink está conectado y listo
-let lavalinkReady = false;
+// Estado de Lavalink gestionado en módulo compartido (evita dependencia circular con play.js)
 
 const client = new Client({
   intents: [
@@ -91,7 +91,7 @@ client.moon.on('nodeCreate', node => {
   console.log(`🔄 Nodo Lavalink creado: ${node.host}:${node.port} — esperando conexión WS...`);
 });
 client.moon.on('nodeReady', node => {
-  lavalinkReady = true;
+  lavalinkState.setReady(true);
   console.log(`🟢 Nodo Lavalink listo: ${node.host}:${node.port}`);
 });
 client.moon.on('nodeError', (node, err) =>
@@ -100,7 +100,7 @@ client.moon.on('nodeError', (node, err) =>
 
 // ── FIX 3: Reconexión automática cuando el nodo se destruye (Render duerme) ──
 client.moon.on('nodeDestroy', node => {
-  lavalinkReady = false;
+  lavalinkState.setReady(false);
   console.warn(`🔴 Nodo destruido: ${node.host} — reconectando en 10s...`);
   setTimeout(() => {
     try { client.moon.init(client.user.id); } catch {}
@@ -110,7 +110,7 @@ client.moon.on('nodeDestroy', node => {
 // ── FIX 4: Keep-alive — detecta nodo caído y reconecta cada 60s ───────────────
 setInterval(() => {
   try {
-    if (lavalinkReady) return;
+    if (lavalinkState.isReady()) return;
 
     const _nodeMap = client.moon.nodes;
     const _nodeList = _nodeMap
@@ -278,8 +278,7 @@ client.on('messageCreate', async (message) => {
 
 client.login(token).catch(err => console.error('❌ Error al iniciar sesión:', err));
 
-// Exportar el flag para que play.js lo consulte
-module.exports = { isLavalinkReady: () => lavalinkReady };
+// (estado de Lavalink exportado desde ./lavalinkState)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function nowPlayingEmbed(track, player) {
