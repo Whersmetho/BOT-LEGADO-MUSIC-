@@ -4,6 +4,13 @@ const lavalinkState = require('../lavalinkState');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
+// Moonlink v3 + Lavalink v4: los tracks pueden estar en res.tracks O res.data
+function getTracks(res) {
+  if (Array.isArray(res?.tracks) && res.tracks.length > 0) return res.tracks;
+  if (Array.isArray(res?.data)   && res.data.length   > 0) return res.data;
+  return [];
+}
+
 // Helper: obtiene los nodos desde NodeManager de moonlink.js v3
 function getNodes(moon) {
   try {
@@ -87,9 +94,10 @@ console.log(
           await loadingMsg.edit('🟢 Obteniendo canción de Spotify...');
           const [trackInfo] = await spotify.getTrack(query);
           const res = await client.moon.search({ query: trackInfo.searchQuery, source: 'ytsearch' });
-          if (!res.tracks?.length) return loadingMsg.edit(`❌ No encontré "${trackInfo.title}" en YouTube.`);
+          const spTracks = getTracks(res);
+          if (!spTracks.length) return loadingMsg.edit(`❌ No encontré "${trackInfo.title}" en YouTube.`);
 
-          const track = res.tracks[0];
+          const track = spTracks[0];
           track.info.title = trackInfo.title;
           player.requester = message.author.id;
           player.queue.add(track);
@@ -109,8 +117,9 @@ console.log(
           let added = 0;
           for (const t of tracks) {
             const res = await client.moon.search({ query: t.searchQuery, source: 'ytsearch' });
-            if (res.tracks?.length) {
-              const track = res.tracks[0];
+            const spTracks = getTracks(res);
+            if (spTracks.length) {
+              const track = spTracks[0];
               track.info.title = t.title;
               player.requester = message.author.id;
               player.queue.add(track);
@@ -129,8 +138,9 @@ console.log(
           let added = 0;
           for (const t of tracks) {
             const res = await client.moon.search({ query: t.searchQuery, source: 'ytsearch' });
-            if (res.tracks?.length) {
-              const track = res.tracks[0];
+            const spTracks = getTracks(res);
+            if (spTracks.length) {
+              const track = spTracks[0];
               track.info.title = t.title;
               player.requester = message.author.id;
               player.queue.add(track);
@@ -146,26 +156,27 @@ console.log(
         const source = query.startsWith('http') ? undefined : 'ytsearch';
         const res    = await client.moon.search({ query, source });
 
+        const ytTracks = getTracks(res);
+
         console.log('🔍 SEARCH DEBUG:', JSON.stringify({
           query,
           source,
           loadType:   res?.loadType,
-          trackCount: res?.tracks?.length ?? 0,
-          firstTrack: res?.tracks?.[0]?.info?.title ?? null,
+          trackCount: ytTracks.length,
+          firstTrack: ytTracks[0]?.info?.title ?? null,
           rawKeys:    Object.keys(res ?? {}),
-          data:       res?.data,
         }, null, 2));
 
-        if (!res.tracks?.length) return loadingMsg.edit('❌ No se encontraron resultados.');
+        if (!ytTracks.length) return loadingMsg.edit('❌ No se encontraron resultados.');
 
         player.requester = message.author.id;
 
         if (res.loadType === 'playlist') {
-          for (const track of res.tracks) player.queue.add(track);
+          for (const track of ytTracks) player.queue.add(track);
           if (!player.playing) player.play();
-          await loadingMsg.edit(`✅ Playlist **${res.playlistInfo?.name || 'Sin nombre'}** — ${res.tracks.length} canciones añadidas.`);
+          await loadingMsg.edit(`✅ Playlist **${res.playlistInfo?.name || 'Sin nombre'}** — ${ytTracks.length} canciones añadidas.`);
         } else {
-          const track = res.tracks[0];
+          const track = ytTracks[0];
           player.queue.add(track);
           if (!player.playing) player.play();
 
