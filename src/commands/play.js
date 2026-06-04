@@ -32,6 +32,7 @@ module.exports = {
   aliases: ['p'],
   description: 'Reproduce música de YouTube o Spotify',
   async execute(message, args, client) {
+    console.log('▶️ PLAY CMD recibido, args:', args);
     if (!args.length)
       return message.reply('❌ Escribe el nombre o URL de una canción. Ej: `l!play despacito`');
 
