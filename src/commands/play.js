@@ -68,17 +68,16 @@ module.exports = {
 
     try {
       // Esperar a que Lavalink esté conectado antes de crear el player
-      const nodes = getNodes(client.moon);
-      if (!nodes.some(n => n.connected)) {
-        await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
-        await waitForLavalink(client, 15000);
-      }
-      
-      const nodes = getNodes(client.moon);
+ const nodes = getNodes(client.moon);
+
+if (!nodes.some(n => n.connected)) {
+  await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
+  await waitForLavalink(client, 15000);
+}
 
 console.log(
   'Lavalink Debug:',
-  nodes.map(n => ({
+  getNodes(client.moon).map(n => ({
     connected: n.connected,
     state: n.ws?.readyState,
     host: n.host
