@@ -145,6 +145,15 @@ console.log(
         const source = query.startsWith('http') ? undefined : 'ytsearch';
         const res    = await client.moon.search({ query, source });
 
+        console.log('🔍 SEARCH DEBUG:', JSON.stringify({
+          query,
+          source,
+          loadType:   res?.loadType,
+          trackCount: res?.tracks?.length ?? 0,
+          firstTrack: res?.tracks?.[0]?.info?.title ?? null,
+          rawKeys:    Object.keys(res ?? {}),
+        }, null, 2));
+
         if (!res.tracks?.length) return loadingMsg.edit('❌ No se encontraron resultados.');
 
         player.requester = message.author.id;
