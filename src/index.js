@@ -112,16 +112,10 @@ setInterval(() => {
   try {
     if (lavalinkState.isReady()) return;
 
-    const _nodeMap = client.moon.nodes;
-    const _nodeList = _nodeMap
-      ? (typeof _nodeMap.values === 'function'
-          ? [..._nodeMap.values()]
-          : Object.values(_nodeMap))
-      : [];
+    const nodes = [...(client.moon.nodes?.map?.values() ?? [])];
+    const node  = nodes[0];
 
-    const node = _nodeList[0];
-
-    if (node && !node.connected) {
+    if (node && node.state !== 'CONNECTED' && node.state !== 'READY') {
       console.log('🔄 Reintentando conexión a Lavalink...');
       client.moon.init(client.user.id);
     }

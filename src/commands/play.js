@@ -4,12 +4,10 @@ const lavalinkState = require('../lavalinkState');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
-// Helper: obtiene los nodos de forma compatible con Map y objeto plano
+// Helper: obtiene los nodos desde NodeManager de moonlink.js v3
 function getNodes(moon) {
-  if (!moon?.nodes) return [];
   try {
-    if (typeof moon.nodes.values === 'function') return [...moon.nodes.values()];
-    return Object.values(moon.nodes);
+    return [...moon.nodes.map.values()];
   } catch {
     return [];
   }
@@ -57,9 +55,9 @@ if (!lavalinkState.isReady()) {
 console.log(
   'Lavalink Debug:',
   getNodes(client.moon).map(n => ({
-    connected: n.connected,
-    state: n.ws?.readyState,
-    host: n.host
+    state: n.state,
+    host: n.host,
+    socket: n.socket?.constructor?.name ?? 'null'
   }))
 );
 
