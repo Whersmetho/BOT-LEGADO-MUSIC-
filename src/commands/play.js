@@ -153,6 +153,7 @@ console.log(
           trackCount: res?.tracks?.length ?? 0,
           firstTrack: res?.tracks?.[0]?.info?.title ?? null,
           rawKeys:    Object.keys(res ?? {}),
+          data:       res?.data,
         }, null, 2));
 
         if (!res.tracks?.length) return loadingMsg.edit('❌ No se encontraron resultados.');
