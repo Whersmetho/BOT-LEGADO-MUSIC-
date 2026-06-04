@@ -104,6 +104,7 @@ console.log(
           const { tracks, playlistName, total } = await spotify.getPlaylist(query);
           await loadingMsg.edit(`📋 Cargando **${playlistName}** — ${total} canciones...`);
 
+          const wasPlaying = player.playing;
           let added = 0;
           for (const t of tracks) {
             const res = await client.moon.search({ query: t.searchQuery, source: 'youtube' });
@@ -112,10 +113,10 @@ console.log(
               track.info.title = t.title;
               player.requester = message.author.id;
               player.queue.add(track);
-              if (!player.playing) player.play();
               added++;
             }
           }
+          if (!wasPlaying && added > 0) player.play();
           await loadingMsg.edit(`✅ Playlist **${playlistName}** — ${added}/${total} canciones añadidas.`);
 
         } else if (type === 'album') {
@@ -123,6 +124,7 @@ console.log(
           const { tracks, albumName, total } = await spotify.getAlbum(query);
           await loadingMsg.edit(`💿 Cargando **${albumName}** — ${total} canciones...`);
 
+          const wasPlaying = player.playing;
           let added = 0;
           for (const t of tracks) {
             const res = await client.moon.search({ query: t.searchQuery, source: 'youtube' });
@@ -131,10 +133,10 @@ console.log(
               track.info.title = t.title;
               player.requester = message.author.id;
               player.queue.add(track);
-              if (!player.playing) player.play();
               added++;
             }
           }
+          if (!wasPlaying && added > 0) player.play();
           await loadingMsg.edit(`✅ Álbum **${albumName}** — ${added}/${total} canciones añadidas.`);
         }
 
