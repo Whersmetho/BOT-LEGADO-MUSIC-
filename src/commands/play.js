@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const spotify = require('../spotify');
+const { isLavalinkReady } = require('../index');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
@@ -14,31 +15,16 @@ function getNodes(moon) {
   }
 }
 
-// Espera hasta que Lavalink esté conectado (máx 15s)
-function waitForLavalink(client, timeout = 15000) {
+// Espera hasta que Lavalink esté conectado (máx 45s — margen para cold start en Render)
+function waitForLavalink(timeout = 45000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
-
     const check = () => {
-      try {
-        const nodes = getNodes(client.moon);
-
-        const ready = nodes.some(
-          n => n.connected === true || n.ws?.readyState === 1
-        );
-
-        if (ready) return resolve();
-
-        if (Date.now() - start >= timeout) {
-          return reject(new Error('Lavalink no conectó a tiempo'));
-        }
-
-        setTimeout(check, 1000);
-      } catch (err) {
-        reject(err);
-      }
+      if (isLavalinkReady()) return resolve();
+      if (Date.now() - start >= timeout)
+        return reject(new Error('Lavalink no conectó a tiempo'));
+      setTimeout(check, 1000);
     };
-
     check();
   });
 }
@@ -62,12 +48,10 @@ module.exports = {
     const loadingMsg = await message.reply('🔍 Buscando...');
 
     try {
-      // Esperar a que Lavalink esté conectado antes de crear el player
- const nodes = getNodes(client.moon);
-
-if (!nodes.some(n => n.connected || n.ws?.readyState === 1)) {
+      // Esperar a que Lavalink esté listo antes de crear el player
+if (!isLavalinkReady()) {
   await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
-  await waitForLavalink(client, 15000);
+  await waitForLavalink(45000);
 }
 
 console.log(

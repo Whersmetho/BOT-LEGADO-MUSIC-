@@ -88,8 +88,11 @@ client.moon = new MoonlinkManager(
 
 // Eventos del manager
 client.moon.on('nodeCreate', node => {
+  console.log(`🔄 Nodo Lavalink creado: ${node.host}:${node.port} — esperando conexión WS...`);
+});
+client.moon.on('nodeReady', node => {
   lavalinkReady = true;
-  console.log(`🟢 Nodo Lavalink conectado: ${node.host}:${node.port}`);
+  console.log(`🟢 Nodo Lavalink listo: ${node.host}:${node.port}`);
 });
 client.moon.on('nodeError', (node, err) =>
   console.error(`❌ Error en nodo ${node.host}:`, err?.message || err)
@@ -345,25 +348,7 @@ async function playRelated(player, track, textChannel) {
   }
 }
 
-client.moon.on('nodeCreate', node => {
-  console.log('🟢 NODE CREATE');
-  console.log({
-    host: node.host,
-    port: node.port,
-    connected: node.connected,
-    wsState: node.ws?.readyState,
-  });
-});
 
-client.moon.on('nodeReady', node => {
-  console.log('🟢 NODE READY');
-  console.log({
-    host: node.host,
-    port: node.port,
-    connected: node.connected,
-    wsState: node.ws?.readyState,
-  });
-});
 
 client.moon.on('nodeDisconnect', (node, reason) => {
   console.log('🔴 NODE DISCONNECT');
