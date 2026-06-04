@@ -85,7 +85,7 @@ console.log(
         if (type === 'track') {
           await loadingMsg.edit('🟢 Obteniendo canción de Spotify...');
           const [trackInfo] = await spotify.getTrack(query);
-          const res = await client.moon.search({ query: trackInfo.searchQuery, source: 'youtube' });
+          const res = await client.moon.search({ query: trackInfo.searchQuery, source: 'ytsearch' });
           if (!res.tracks?.length) return loadingMsg.edit(`❌ No encontré "${trackInfo.title}" en YouTube.`);
 
           const track = res.tracks[0];
@@ -107,7 +107,7 @@ console.log(
           const wasPlaying = player.playing;
           let added = 0;
           for (const t of tracks) {
-            const res = await client.moon.search({ query: t.searchQuery, source: 'youtube' });
+            const res = await client.moon.search({ query: t.searchQuery, source: 'ytsearch' });
             if (res.tracks?.length) {
               const track = res.tracks[0];
               track.info.title = t.title;
@@ -127,7 +127,7 @@ console.log(
           const wasPlaying = player.playing;
           let added = 0;
           for (const t of tracks) {
-            const res = await client.moon.search({ query: t.searchQuery, source: 'youtube' });
+            const res = await client.moon.search({ query: t.searchQuery, source: 'ytsearch' });
             if (res.tracks?.length) {
               const track = res.tracks[0];
               track.info.title = t.title;
@@ -142,7 +142,7 @@ console.log(
 
       // ── YouTube / búsqueda ───────────────────────────────────────────────
       } else {
-        const source = query.startsWith('http') ? undefined : 'youtube';
+        const source = query.startsWith('http') ? undefined : 'ytsearch';
         const res    = await client.moon.search({ query, source });
 
         if (!res.tracks?.length) return loadingMsg.edit('❌ No se encontraron resultados.');
