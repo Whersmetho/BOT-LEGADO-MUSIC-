@@ -23,16 +23,11 @@ function waitForLavalink(client, timeout = 15000) {
       try {
         const nodes = getNodes(client.moon);
 
-        if (nodes.length > 0) {
-          const node = nodes[0];
+        const ready = nodes.some(
+          n => n.connected === true || n.ws?.readyState === 1
+        );
 
-          if (
-            node.connected === true ||
-            node.ws?.readyState === 1
-          ) {
-            return resolve();
-          }
-        }
+        if (ready) return resolve();
 
         if (Date.now() - start >= timeout) {
           return reject(new Error('Lavalink no conectó a tiempo'));
@@ -70,7 +65,7 @@ module.exports = {
       // Esperar a que Lavalink esté conectado antes de crear el player
  const nodes = getNodes(client.moon);
 
-if (!nodes.some(n => n.connected)) {
+if (!nodes.some(n => n.connected || n.ws?.readyState === 1)) {
   await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
   await waitForLavalink(client, 15000);
 }
