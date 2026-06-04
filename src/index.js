@@ -344,3 +344,36 @@ async function playRelated(player, track, textChannel) {
     setTimeout(() => { try { player.destroy(); } catch {} }, 30000);
   }
 }
+
+client.moon.on('nodeCreate', node => {
+  console.log('🟢 NODE CREATE');
+  console.log({
+    host: node.host,
+    port: node.port,
+    connected: node.connected,
+    wsState: node.ws?.readyState,
+  });
+});
+
+client.moon.on('nodeReady', node => {
+  console.log('🟢 NODE READY');
+  console.log({
+    host: node.host,
+    port: node.port,
+    connected: node.connected,
+    wsState: node.ws?.readyState,
+  });
+});
+
+client.moon.on('nodeDisconnect', (node, reason) => {
+  console.log('🔴 NODE DISCONNECT');
+  console.log({
+    host: node.host,
+    reason,
+  });
+});
+
+client.moon.on('nodeError', (node, err) => {
+  console.log('❌ NODE ERROR');
+  console.log(err);
+});
