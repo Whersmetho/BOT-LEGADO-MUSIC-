@@ -166,7 +166,7 @@ module.exports = {
         const source = query.startsWith('http') ? undefined : 'ytsearch';
         const res    = await client.moon.search({ query, source });
         const ytTracks = getTracks(res);
-
+        console.log('RAW TRACK:', JSON.stringify(ytTracks[0], null, 2));
         console.log('🔍 SEARCH DEBUG:', JSON.stringify({
           query, source,
           loadType:   res?.loadType,
