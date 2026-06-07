@@ -5,28 +5,43 @@ const lavalinkState = require('../lavalinkState');
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
 // Moonlink 3.6.64 + Lavalink v4:
-// res.data contiene los tracks crudos de Lavalink pero sin procesar por Moonlink.
-// res.tracks puede estar vacío o tener objetos mal formados.
-// Solución: construir el track manualmente desde res.data si res.tracks falla.
-function getTracks(res) {
-  // Primero intentar res.tracks (ya procesados por Moonlink)
-  if (Array.isArray(res?.tracks) && res.tracks.length > 0 && res.tracks[0]?.encoded) {
+// Los tracks en res.data NO tienen .info — los campos están en la raíz.
+// Normalizamos a una estructura consistente con .info para el resto del código.
+function normalizeTracks(res) {
+  // res.tracks procesados por Moonlink (estructura normal con .info)
+  if (Array.isArray(res?.tracks) && res.tracks.length > 0 && res.tracks[0]?.info?.title) {
     return res.tracks;
   }
-  // Fallback: res.data (formato crudo Lavalink v4) — construir objeto compatible
-  if (Array.isArray(res?.data) && res.data.length > 0) {
-    return res.data
-      .filter(t => t?.encoded && t?.info)
-      .map(t => ({
-        encoded:  t.encoded,
-        info:     t.info,
-        // Moonlink necesita estos campos para player.play()
-        track:    t.encoded,
-        pluginInfo: t.pluginInfo || {},
-        userData:   t.userData  || {},
-      }));
-  }
-  return [];
+  // res.data: campos en raíz, sin .info — los normalizamos
+  const source = Array.isArray(res?.tracks) && res.tracks.length > 0
+    ? res.tracks
+    : (Array.isArray(res?.data) ? res.data : []);
+
+  return source
+    .filter(t => t?.encoded)
+    .map(t => {
+      // Si ya tiene .info, usarlo; si no, construirlo desde la raíz
+      const info = t.info ?? {
+        title:      t.title      ?? 'Desconocido',
+        author:     t.author     ?? 'Desconocido',
+        length:     t.duration   ?? t.length ?? 0,
+        identifier: t.identifier ?? '',
+        uri:        t.url        ?? t.uri    ?? '',
+        artworkUrl: t.artworkUrl ?? '',
+        isStream:   t.isStream   ?? false,
+        isSeekable: t.isSeekable ?? true,
+        sourceName: t.sourceName ?? 'youtube',
+        position:   t.position   ?? 0,
+        isrc:       t.isrc       ?? null,
+      };
+      return {
+        encoded:    t.encoded,
+        track:      t.encoded,   // Moonlink usa este campo para play()
+        info,
+        pluginInfo: t.pluginInfo ?? {},
+        userData:   t.userData   ?? {},
+      };
+    });
 }
 
 // Helper: obtiene los nodos desde NodeManager de moonlink.js v3
@@ -35,7 +50,7 @@ function getNodes(moon) {
   catch { return []; }
 }
 
-// Espera hasta que Lavalink esté conectado (máx 45s — margen para cold start en Render)
+// Espera hasta que Lavalink esté conectado (máx 45s)
 function waitForLavalink(timeout = 45000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -69,7 +84,6 @@ module.exports = {
     const loadingMsg = await message.reply('🔍 Buscando...');
 
     try {
-      // Esperar a que Lavalink esté listo antes de crear el player
       if (!lavalinkState.isReady()) {
         await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
         await waitForLavalink(45000);
@@ -104,7 +118,7 @@ module.exports = {
           await loadingMsg.edit('🟢 Obteniendo canción de Spotify...');
           const [trackInfo] = await spotify.getTrack(query);
           const res = await client.moon.search({ query: trackInfo.searchQuery, source: 'ytsearch' });
-          const spTracks = getTracks(res);
+          const spTracks = normalizeTracks(res);
           if (!spTracks.length) return loadingMsg.edit(`❌ No encontré "${trackInfo.title}" en YouTube.`);
 
           const track = spTracks[0];
@@ -127,7 +141,7 @@ module.exports = {
           let added = 0;
           for (const t of tracks) {
             const res = await client.moon.search({ query: t.searchQuery, source: 'ytsearch' });
-            const spTracks = getTracks(res);
+            const spTracks = normalizeTracks(res);
             if (spTracks.length) {
               const track = spTracks[0];
               track.info.title = t.title;
@@ -148,7 +162,7 @@ module.exports = {
           let added = 0;
           for (const t of tracks) {
             const res = await client.moon.search({ query: t.searchQuery, source: 'ytsearch' });
-            const spTracks = getTracks(res);
+            const spTracks = normalizeTracks(res);
             if (spTracks.length) {
               const track = spTracks[0];
               track.info.title = t.title;
@@ -165,8 +179,8 @@ module.exports = {
       } else {
         const source = query.startsWith('http') ? undefined : 'ytsearch';
         const res    = await client.moon.search({ query, source });
-        const ytTracks = getTracks(res);
-        console.log('RAW TRACK:', JSON.stringify(ytTracks[0], null, 2));
+        const ytTracks = normalizeTracks(res);
+
         console.log('🔍 SEARCH DEBUG:', JSON.stringify({
           query, source,
           loadType:   res?.loadType,
