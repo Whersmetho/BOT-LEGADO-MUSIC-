@@ -4,20 +4,35 @@ const lavalinkState = require('../lavalinkState');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
 
-// Moonlink v3 + Lavalink v4: los tracks pueden estar en res.tracks O res.data
+// Moonlink 3.6.64 + Lavalink v4:
+// res.data contiene los tracks crudos de Lavalink pero sin procesar por Moonlink.
+// res.tracks puede estar vacío o tener objetos mal formados.
+// Solución: construir el track manualmente desde res.data si res.tracks falla.
 function getTracks(res) {
-  if (Array.isArray(res?.tracks) && res.tracks.length > 0) return res.tracks;
-  if (Array.isArray(res?.data)   && res.data.length   > 0) return res.data;
+  // Primero intentar res.tracks (ya procesados por Moonlink)
+  if (Array.isArray(res?.tracks) && res.tracks.length > 0 && res.tracks[0]?.encoded) {
+    return res.tracks;
+  }
+  // Fallback: res.data (formato crudo Lavalink v4) — construir objeto compatible
+  if (Array.isArray(res?.data) && res.data.length > 0) {
+    return res.data
+      .filter(t => t?.encoded && t?.info)
+      .map(t => ({
+        encoded:  t.encoded,
+        info:     t.info,
+        // Moonlink necesita estos campos para player.play()
+        track:    t.encoded,
+        pluginInfo: t.pluginInfo || {},
+        userData:   t.userData  || {},
+      }));
+  }
   return [];
 }
 
 // Helper: obtiene los nodos desde NodeManager de moonlink.js v3
 function getNodes(moon) {
-  try {
-    return [...moon.nodes.map.values()];
-  } catch {
-    return [];
-  }
+  try { return [...moon.nodes.map.values()]; }
+  catch { return []; }
 }
 
 // Espera hasta que Lavalink esté conectado (máx 45s — margen para cold start en Render)
@@ -55,19 +70,14 @@ module.exports = {
 
     try {
       // Esperar a que Lavalink esté listo antes de crear el player
-if (!lavalinkState.isReady()) {
-  await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
-  await waitForLavalink(45000);
-}
+      if (!lavalinkState.isReady()) {
+        await loadingMsg.edit('⏳ Conectando al servidor de música, espera un momento...');
+        await waitForLavalink(45000);
+      }
 
-console.log(
-  'Lavalink Debug:',
-  getNodes(client.moon).map(n => ({
-    state: n.state,
-    host: n.host,
-    socket: n.socket?.constructor?.name ?? 'null'
-  }))
-);
+      console.log('Lavalink Debug:', getNodes(client.moon).map(n => ({
+        state: n.state, host: n.host, socket: n.socket?.constructor?.name ?? 'null'
+      })));
 
       let player = client.moon.players.get(message.guild.id);
       if (!player) {
@@ -155,16 +165,14 @@ console.log(
       } else {
         const source = query.startsWith('http') ? undefined : 'ytsearch';
         const res    = await client.moon.search({ query, source });
-
         const ytTracks = getTracks(res);
 
         console.log('🔍 SEARCH DEBUG:', JSON.stringify({
-          query,
-          source,
+          query, source,
           loadType:   res?.loadType,
           trackCount: ytTracks.length,
           firstTrack: ytTracks[0]?.info?.title ?? null,
-          rawKeys:    Object.keys(res ?? {}),
+          hasEncoded: !!ytTracks[0]?.encoded,
         }, null, 2));
 
         if (!ytTracks.length) return loadingMsg.edit('❌ No se encontraron resultados.');
