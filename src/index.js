@@ -280,7 +280,7 @@ function normalizeTracks(res) {
   if (Array.isArray(res?.tracks) && res.tracks.length > 0 && res.tracks[0]?.info?.title) return res.tracks;
   const source = (Array.isArray(res?.tracks) && res.tracks.length > 0) ? res.tracks : (Array.isArray(res?.data) ? res.data : []);
   return source.filter(t => t?.encoded).map(t => {
-    const info = t.info ?? { title: t.title ?? 'Desconocido', author: t.author ?? 'Desconocido', length: t.duration ?? t.length ?? 0, identifier: t.identifier ?? ', uri: t.url ?? t.uri ?? ', artworkUrl: t.artworkUrl ?? ', isStream: t.isStream ?? false, isSeekable: t.isSeekable ?? true, sourceName: t.sourceName ?? 'youtube', position: 0, isrc: null };
+    const info = t.info ?? { title: t.title ?? 'Desconocido', author: t.author ?? 'Desconocido', length: t.duration ?? t.length ?? 0, identifier: t.identifier ?? '', uri: t.url ?? t.uri ?? '', artworkUrl: t.artworkUrl ?? '', isStream: t.isStream ?? false, isSeekable: t.isSeekable ?? true, sourceName: t.sourceName ?? 'youtube', position: 0, isrc: null };
     return { encoded: t.encoded, track: t.encoded, info, pluginInfo: t.pluginInfo ?? {}, userData: t.userData ?? {} };
   });
 }
