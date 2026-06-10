@@ -106,7 +106,9 @@ module.exports = {
         player.nowPlayingMsgId = null;
       }
 
+      console.log('Conectando al canal:', voiceChannel.name);
       if (!player.connected) await player.connect();
+      console.log('Player conectado:', player.connected);
       player.textChannel = message.channel.id;
 
       // ── Spotify ──────────────────────────────────────────────────────────
@@ -125,7 +127,7 @@ module.exports = {
           track.info.title = trackInfo.title;
           player.requester = message.author.id;
           player.queue.add(track);
-          if (!player.playing) player.play();
+          if (!player.playing) await player.play();
 
           if (player.queue.size > 0 || player.playing)
             await loadingMsg.edit(`➕ **${trackInfo.title}** añadido a la cola.`);
@@ -195,12 +197,12 @@ module.exports = {
 
         if (res.loadType === 'playlist') {
           for (const track of ytTracks) player.queue.add(track);
-          if (!player.playing) player.play();
+          if (!player.playing) await player.play();
           await loadingMsg.edit(`✅ Playlist **${res.playlistInfo?.name || 'Sin nombre'}** — ${ytTracks.length} canciones añadidas.`);
         } else {
           const track = ytTracks[0];
           player.queue.add(track);
-          if (!player.playing) player.play();
+          if (!player.playing) await player.play();
 
           if (player.playing && player.queue.size > 0) {
             await loadingMsg.edit(`➕ **${track.info.title}** (${formatMs(track.info.length)}) añadido a la cola.`);

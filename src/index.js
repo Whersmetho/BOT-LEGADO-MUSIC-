@@ -98,6 +98,15 @@ client.moon.on('nodeError', (node, err) =>
   console.error(`❌ Error en nodo ${node.host}:`, err?.message || err)
 );
 
+client.moon.on('playerError', (player, error) => {
+  console.error('PLAYER ERROR:', error);
+});
+
+client.moon.on('nodeError', (node, error) => {
+  console.error('NODE ERROR:', error);
+});
+
+
 // ── FIX 3: Reconexión automática cuando el nodo se destruye (Render duerme) ──
 client.moon.on('nodeDestroy', node => {
   lavalinkState.setReady(false);
@@ -179,7 +188,9 @@ client.moon.on('trackStart', async (player, track) => {
 });
 
 client.moon.on('trackError', async (player, track, err) => {
-  console.error('Track error:', err);
+  console.error('TRACK ERROR COMPLETO');
+  console.log('Track:', track);
+  console.log('Error:', err);
   const textChannel = client.channels.cache.get(player.textChannel);
   if (textChannel) {
     try {
