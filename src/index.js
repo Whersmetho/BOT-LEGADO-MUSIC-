@@ -169,7 +169,27 @@ client.once('clientReady', () => {
   }
 });
 
-client.on('raw', data => client.moon.packetUpdate(data));
+client.on('raw', data => {
+  if (data.t === 'VOICE_SERVER_UPDATE' || data.t === 'VOICE_STATE_UPDATE') {
+    console.log(`🎙️ Voice packet: ${data.t}`, JSON.stringify(data.d).substring(0, 150));
+    client.moon.packetUpdate(data);
+  }
+});
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+  if (newState.member?.user?.id === client.user?.id) {
+    console.log('🎙️ Bot voiceStateUpdate — channelId:', newState.channelId, 'sessionId:', newState.sessionId);
+    client.moon.packetUpdate({
+      t: 'VOICE_STATE_UPDATE',
+      d: {
+        guild_id:   newState.guild.id,
+        user_id:    newState.member.user.id,
+        channel_id: newState.channelId,
+        session_id: newState.sessionId,
+      }
+    });
+  }
+});
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
