@@ -340,3 +340,11 @@ async function playRelated(player, track, textChannel) {
 client.moon.on('nodeDisconnect', (node, reason) => {
   console.log('🔴 NODE DISCONNECT', { host: node.host, reason });
 });
+
+// Debug: log ALL moonlink events
+const moonEvents = ['trackStart','trackEnd','trackError','trackStuck','playerCreate','playerDestroy','playerUpdate','queueEnd','socketClosed'];
+moonEvents.forEach(evt => {
+  client.moon.on(evt, (...args) => {
+    console.log(`🌙 moonlink event: ${evt}`, args.map(a => typeof a === 'object' ? JSON.stringify(a)?.substring(0,100) : a));
+  });
+});
