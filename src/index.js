@@ -8,7 +8,6 @@ const { initSpotify } = require('./spotify');
 const { handleMessage: automodHandle } = require('./commands/automod');
 const lavalinkState = require('./lavalinkState');
 
-// ── FIX 1: Manejo global de errores — evita crashes por promesas no manejadas ─
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Rejection:', err?.message || err);
 });
@@ -22,26 +21,6 @@ const spotifyClientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
 if (!token) { console.error('❌ TOKEN no encontrado'); process.exit(1); }
 
-// ── FIX 2: Cookies desde variable de entorno (no hardcodeadas en archivo) ─────
-const cookiesPath = path.join(process.cwd(), 'cookies.txt');
-const cookiesEnv  = process.env.YOUTUBE_COOKIES;
-
-if (cookiesEnv) {
-  try {
-    const content = cookiesEnv.replace(/\\n/g, '\n');
-    fs.writeFileSync(cookiesPath, content, 'utf8');
-    const lines = content.split('\n').filter(l => l.trim() && !l.startsWith('#')).length;
-    console.log(`🍪 cookies.txt escrito — ${lines} entradas de cookies`);
-  } catch (e) {
-    console.error('❌ Error escribiendo cookies.txt:', e.message);
-  }
-} else {
-  console.warn('⚠️ YOUTUBE_COOKIES no definida — YouTube puede bloquear las descargas');
-}
-
-// ── Nodos de Lavalink ─────────────────────────────────────────────────────────
-// Render expone el servicio en el puerto 443 (HTTPS/WSS), no en el puerto interno.
-// Si LAVALINK_SECURE=true → puerto 443. Si no, se usa LAVALINK_PORT (default 80).
 const lavalinkSecure = process.env.LAVALINK_SECURE === 'true';
 const LAVALINK_NODES = [
   {
@@ -51,8 +30,6 @@ const LAVALINK_NODES = [
     secure:   lavalinkSecure,
   },
 ];
-
-// Estado de Lavalink gestionado en módulo compartido (evita dependencia circular con play.js)
 
 const client = new Client({
   intents: [
@@ -67,7 +44,6 @@ const client = new Client({
 client.commands = new Collection();
 client.aliases  = new Collection();
 
-// ── Cargar comandos ───────────────────────────────────────────────────────────
 const commandsPath = path.join(__dirname, 'commands');
 for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
   const cmd = require(path.join(commandsPath, file));
@@ -76,7 +52,6 @@ for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) 
   if (cmd.aliases) cmd.aliases.forEach(a => client.aliases.set(a, cmd.name));
 }
 
-// ── Moonlink (Lavalink) ───────────────────────────────────────────────────────
 client.moon = new MoonlinkManager(
   LAVALINK_NODES,
   { clientName: 'LEGADO MUSIC' },
@@ -86,9 +61,8 @@ client.moon = new MoonlinkManager(
   }
 );
 
-// Eventos del manager
 client.moon.on('nodeCreate', node => {
-  console.log(`🔄 Nodo Lavalink creado: ${node.host}:${node.port} — esperando conexión WS...`);
+  console.log(`🔄 Nodo Lavalink creado: ${node.host}:${node.port}`);
 });
 client.moon.on('nodeReady', node => {
   lavalinkState.setReady(true);
@@ -97,17 +71,9 @@ client.moon.on('nodeReady', node => {
 client.moon.on('nodeError', (node, err) =>
   console.error(`❌ Error en nodo ${node.host}:`, err?.message || err)
 );
-
 client.moon.on('playerError', (player, error) => {
   console.error('PLAYER ERROR:', error);
 });
-
-client.moon.on('nodeError', (node, error) => {
-  console.error('NODE ERROR:', error);
-});
-
-
-// ── FIX 3: Reconexión automática cuando el nodo se destruye (Render duerme) ──
 client.moon.on('nodeDestroy', node => {
   lavalinkState.setReady(false);
   console.warn(`🔴 Nodo destruido: ${node.host} — reconectando en 10s...`);
@@ -116,14 +82,11 @@ client.moon.on('nodeDestroy', node => {
   }, 10000);
 });
 
-// ── FIX 4: Keep-alive — detecta nodo caído y reconecta cada 60s ───────────────
 setInterval(() => {
   try {
     if (lavalinkState.isReady()) return;
-
     const nodes = [...(client.moon.nodes?.map?.values() ?? [])];
     const node  = nodes[0];
-
     if (node && node.state !== 'CONNECTED' && node.state !== 'READY') {
       console.log('🔄 Reintentando conexión a Lavalink...');
       client.moon.init(client.user.id);
@@ -131,12 +94,10 @@ setInterval(() => {
   } catch {}
 }, 60_000);
 
-// ── Cuando termina una canción → reproducir la siguiente ─────────────────────
 client.moon.on('trackEnd', async (player, track) => {
   const textChannel = client.channels.cache.get(player.textChannel);
   if (!textChannel) return;
 
-  // Deshabilitar botones del mensaje anterior
   if (player.nowPlayingMsgId) {
     try {
       const msg = await textChannel.messages.fetch(player.nowPlayingMsgId);
@@ -145,22 +106,14 @@ client.moon.on('trackEnd', async (player, track) => {
     player.nowPlayingMsgId = null;
   }
 
-  if (player.loop) {
-    player.play();
-    return;
-  }
-
-  if (player.queue.size > 0) {
-    player.play();
-    return;
-  }
+  if (player.loop) { player.play(); return; }
+  if (player.queue.size > 0) { player.play(); return; }
 
   if (player.autoplay) {
     await playRelated(player, track, textChannel);
     return;
   }
 
-  // Cola vacía
   player.playing = false;
   try {
     textChannel.send({ embeds: [
@@ -173,7 +126,6 @@ client.moon.on('trackEnd', async (player, track) => {
   setTimeout(() => { try { player.destroy(); } catch {} }, 30000);
 });
 
-// ── Cuando empieza una canción → mostrar embed ────────────────────────────────
 client.moon.on('trackStart', async (player, track) => {
   const textChannel = client.channels.cache.get(player.textChannel);
   if (!textChannel) return;
@@ -188,9 +140,7 @@ client.moon.on('trackStart', async (player, track) => {
 });
 
 client.moon.on('trackError', async (player, track, err) => {
-  console.error('TRACK ERROR COMPLETO');
-  console.log('Track:', track);
-  console.log('Error:', err);
+  console.error('TRACK ERROR:', err);
   const textChannel = client.channels.cache.get(player.textChannel);
   if (textChannel) {
     try {
@@ -199,10 +149,12 @@ client.moon.on('trackError', async (player, track, err) => {
       ]});
     } catch {}
   }
+  // Intentar siguiente canción
+  if (player.queue.size > 0) {
+    setTimeout(() => { try { player.play(); } catch {} }, 1000);
+  }
 });
 
-// ── Ready ─────────────────────────────────────────────────────────────────────
-// Usar clientReady (discord.js v14) en vez del deprecated 'ready'
 client.once('clientReady', () => {
   console.log(`✅ Bot listo como ${client.user.tag}`);
   client.user.setActivity('🎵 l!help para comandos');
@@ -211,14 +163,14 @@ client.once('clientReady', () => {
 
   if (spotifyClientId && spotifyClientSecret) {
     initSpotify(spotifyClientId, spotifyClientSecret);
-    console.log('🟢 Spotify conectado');
+    console.log('🟢 Spotify API inicializado');
+  } else {
+    console.warn('⚠️ SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET no definidos');
   }
 });
 
-// ── Necesario para que Lavalink reciba eventos de voz ────────────────────────
 client.on('raw', data => client.moon.packetUpdate(data));
 
-// ── Botones interactivos ──────────────────────────────────────────────────────
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
@@ -258,7 +210,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// ── Mensajes ──────────────────────────────────────────────────────────────────
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   await automodHandle(message, client);
@@ -283,27 +234,18 @@ client.on('messageCreate', async (message) => {
 
 client.login(token).catch(err => console.error('❌ Error al iniciar sesión:', err));
 
-// (estado de Lavalink exportado desde ./lavalinkState)
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
-// Normaliza tracks de Lavalink v4 (campos en raíz) a estructura con .info
-function normalizeTracks(res) {
-  if (Array.isArray(res?.tracks) && res.tracks.length > 0 && res.tracks[0]?.info?.title) return res.tracks;
-  const source = (Array.isArray(res?.tracks) && res.tracks.length > 0) ? res.tracks : (Array.isArray(res?.data) ? res.data : []);
-  return source.filter(t => t?.encoded).map(t => {
-    const info = t.info ?? { title: t.title ?? 'Desconocido', author: t.author ?? 'Desconocido', length: t.duration ?? t.length ?? 0, identifier: t.identifier ?? '', uri: t.url ?? t.uri ?? '', artworkUrl: t.artworkUrl ?? '', isStream: t.isStream ?? false, isSeekable: t.isSeekable ?? true, sourceName: t.sourceName ?? 'youtube', position: 0, isrc: null };
-    return { encoded: t.encoded, track: t.encoded, info, pluginInfo: t.pluginInfo ?? {}, userData: t.userData ?? {} };
-  });
-}
-
 function nowPlayingEmbed(track, player) {
   const info = track.info || track;
+  const thumbnail = info.artworkUrl
+    || (info.identifier ? `https://img.youtube.com/vi/${info.identifier}/hqdefault.jpg` : null);
+
   return new EmbedBuilder()
-    .setColor('#9B59B6')
+    .setColor('#1DB954')  // verde de Spotify
     .setAuthor({ name: '▶️ Reproduciendo ahora' })
     .setTitle(info.title)
     .setURL(info.uri)
-    .setThumbnail(info.artworkUrl || `https://img.youtube.com/vi/${info.identifier}/hqdefault.jpg`)
+    .setThumbnail(thumbnail)
     .addFields(
       { name: '⏱️ Duración',   value: formatMs(info.length), inline: true },
       { name: '🎧 Pedido por', value: player.requester ? `<@${player.requester}>` : 'Desconocido', inline: true },
@@ -341,14 +283,26 @@ function formatMs(ms) {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
+function normalizeTracks(res) {
+  if (Array.isArray(res?.tracks) && res.tracks.length > 0 && res.tracks[0]?.info?.title) return res.tracks;
+  const source = (Array.isArray(res?.tracks) && res.tracks.length > 0) ? res.tracks : (Array.isArray(res?.data) ? res.data : []);
+  return source.filter(t => t?.encoded).map(t => {
+    const info = t.info ?? { title: t.title ?? 'Desconocido', author: t.author ?? 'Desconocido', length: t.duration ?? t.length ?? 0, identifier: t.identifier ?? '', uri: t.url ?? t.uri ?? '', artworkUrl: t.artworkUrl ?? '', isStream: t.isStream ?? false, isSeekable: t.isSeekable ?? true, sourceName: t.sourceName ?? 'spotify', position: 0, isrc: null };
+    return { encoded: t.encoded, track: t.encoded, info, pluginInfo: t.pluginInfo ?? {}, userData: t.userData ?? {} };
+  });
+}
+
 async function playRelated(player, track, textChannel) {
   try {
     const info = track.info || track;
-    const res  = await client.moon.search({
-      query: `${info.title} related`,
-      source: 'ytsearch',
-    });
-    const allTracks = normalizeTracks(res);
+    // Buscar relacionadas en Spotify primero, luego YouTube
+    const query = `${info.title} ${info.author || ''}`.trim();
+    let res = await client.moon.search({ query, source: 'spsearch' });
+    let allTracks = normalizeTracks(res);
+    if (!allTracks.length) {
+      res = await client.moon.search({ query, source: 'ytsearch' });
+      allTracks = normalizeTracks(res);
+    }
     if (!allTracks.length) throw new Error('Sin resultados');
     const related = allTracks.find(t => t.info?.uri !== info.uri) || allTracks[0];
     player.queue.add(related);
@@ -363,17 +317,6 @@ async function playRelated(player, track, textChannel) {
   }
 }
 
-
-
 client.moon.on('nodeDisconnect', (node, reason) => {
-  console.log('🔴 NODE DISCONNECT');
-  console.log({
-    host: node.host,
-    reason,
-  });
-});
-
-client.moon.on('nodeError', (node, err) => {
-  console.log('❌ NODE ERROR');
-  console.log(err);
+  console.log('🔴 NODE DISCONNECT', { host: node.host, reason });
 });
