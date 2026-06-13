@@ -3,7 +3,7 @@ const spotify = require('../spotify');
 const lavalinkState = require('../lavalinkState');
 
 function isSpotifyURL(str) { return str.includes('open.spotify.com'); }
-function isDeezerURL(str) { return str.includes('deezer.com'); }
+function isDeezerURL(str)  { return str.includes('deezer.com'); }
 
 function normalizeTracks(res) {
   if (Array.isArray(res?.tracks) && res.tracks.length > 0 && res.tracks[0]?.info?.title) {
@@ -15,7 +15,7 @@ function normalizeTracks(res) {
     const info = t.info ?? {
       title: t.title ?? 'Desconocido', author: t.author ?? 'Desconocido',
       length: t.duration ?? t.length ?? 0, identifier: t.identifier ?? '',
-      uri: t.url ?? t.uri ?? '', artworkUrl: t.artworkUrl ?? t.thumbnail ?? '',
+      uri: t.url ?? t.uri ?? '', artworkUrl: t.artworkUrl ?? '',
       isStream: false, isSeekable: true, sourceName: t.sourceName ?? 'unknown',
       position: 0, isrc: t.isrc ?? null,
     };
@@ -47,10 +47,25 @@ async function search(moon, query, source) {
   }
 }
 
+// Inicia reproducción pasando el track explícitamente a moonlink
+async function startPlay(player, track) {
+  console.log('▶️ startPlay called, track:', track?.info?.title, 'encoded:', track?.encoded?.substring(0, 20));
+  try {
+    // moonlink v3: play(track) o play() con queue
+    if (typeof player.play === 'function') {
+      // Intentar pasar el track directo primero
+      const result = await player.play(track);
+      console.log('▶️ play() result:', result);
+    }
+  } catch (e) {
+    console.error('▶️ play() error:', e.message);
+  }
+}
+
 module.exports = {
   name: 'play',
   aliases: ['p'],
-  description: 'Reproduce música de Spotify o Deezer',
+  description: 'Reproduce música de Deezer',
   async execute(message, args, client) {
     console.log('▶️ PLAY CMD recibido, args:', args);
     if (!args.length)
@@ -75,91 +90,87 @@ module.exports = {
       let player = client.moon.players.get(message.guild.id);
       if (!player) {
         player = client.moon.players.create({
-          guildId: message.guild.id,
+          guildId:      message.guild.id,
           voiceChannel: voiceChannel.id,
-          textChannel: message.channel.id,
-          autoPlay: false,
+          textChannel:  message.channel.id,
+          autoPlay:     false,
         });
-        player.autoplay = false;
-        player.loop = false;
+        player.autoplay        = false;
+        player.loop            = false;
         player.nowPlayingMsgId = null;
       }
-      if (!player.connected) await player.connect();
-      player.textChannel = message.channel.id;
 
-      // ── Spotify URL ───────────────────────────────────────────────────────
+      if (!player.connected) {
+        console.log('🔌 Conectando al canal de voz...');
+        await player.connect();
+        // Esperar un momento para que el voice state se establezca
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      player.textChannel = message.channel.id;
+      player.requester   = message.author.id;
+
+      console.log('🔌 Player state:', {
+        connected: player.connected,
+        playing: player.playing,
+        voiceChannel: player.voiceChannel,
+        guildId: player.guildId,
+      });
+
+      // ── URL de Spotify ──────────────────────────────────────────────────
       if (isSpotifyURL(query)) {
         const type = spotify.getSpotifyType(query);
         if (!type) return loadingMsg.edit('❌ URL de Spotify no válida.');
 
+        await loadingMsg.edit('🟢 Cargando desde Spotify...');
+        const { tracks, res } = await search(client.moon, query, 'spsearch');
+        if (!tracks.length) return loadingMsg.edit('❌ No encontré esa canción.');
+
         if (type === 'track') {
-          await loadingMsg.edit('🟢 Cargando canción de Spotify...');
-          let { tracks } = await search(client.moon, query, 'spsearch');
-          if (!tracks.length) return loadingMsg.edit('❌ No encontré esa canción en Spotify/Deezer.');
-          const track = tracks[0];
-          player.requester = message.author.id;
-          player.queue.add(track);
-          if (!player.playing) await player.play();
-          await loadingMsg.edit(`▶️ **${track.info.title}** — reproduciendo.`);
-
-        } else if (type === 'playlist') {
-          await loadingMsg.edit('🟢 Cargando playlist de Spotify...');
-          const { tracks, res } = await search(client.moon, query, 'spsearch');
-          if (!tracks.length) return loadingMsg.edit('❌ No pude cargar esta playlist.');
+          player.queue.add(tracks[0]);
+          if (!player.playing) await startPlay(player, tracks[0]);
+          await loadingMsg.edit(`▶️ **${tracks[0].info.title}** — reproduciendo.`);
+        } else {
           const wasPlaying = player.playing;
-          player.requester = message.author.id;
           for (const t of tracks) player.queue.add(t);
-          if (!wasPlaying) await player.play();
+          if (!wasPlaying) await startPlay(player, tracks[0]);
           const name = res?.playlistInfo?.name || 'Playlist';
-          await loadingMsg.edit(`✅ **${name}** — ${tracks.length} canciones añadidas.`);
-
-        } else if (type === 'album') {
-          await loadingMsg.edit('🟢 Cargando álbum de Spotify...');
-          const { tracks, res } = await search(client.moon, query, 'spsearch');
-          if (!tracks.length) return loadingMsg.edit('❌ No pude cargar este álbum.');
-          const wasPlaying = player.playing;
-          player.requester = message.author.id;
-          for (const t of tracks) player.queue.add(t);
-          if (!wasPlaying) await player.play();
-          const name = res?.playlistInfo?.name || 'Álbum';
           await loadingMsg.edit(`✅ **${name}** — ${tracks.length} canciones añadidas.`);
         }
 
-      // ── Deezer URL ────────────────────────────────────────────────────────
+      // ── URL de Deezer ───────────────────────────────────────────────────
       } else if (isDeezerURL(query)) {
         await loadingMsg.edit('🟠 Cargando desde Deezer...');
         const { tracks, res } = await search(client.moon, query, 'dzsearch');
         if (!tracks.length) return loadingMsg.edit('❌ No pude cargar desde Deezer.');
         const wasPlaying = player.playing;
-        player.requester = message.author.id;
         for (const t of tracks) player.queue.add(t);
-        if (!wasPlaying) await player.play();
-        if (tracks.length === 1) {
-          await loadingMsg.edit(`▶️ **${tracks[0].info.title}** — reproduciendo.`);
-        } else {
-          await loadingMsg.edit(`✅ **${res?.playlistInfo?.name || 'Playlist'}** — ${tracks.length} canciones añadidas.`);
-        }
+        if (!wasPlaying) await startPlay(player, tracks[0]);
+        await loadingMsg.edit(tracks.length === 1
+          ? `▶️ **${tracks[0].info.title}** — reproduciendo.`
+          : `✅ **${res?.playlistInfo?.name || 'Playlist'}** — ${tracks.length} canciones.`);
 
-      // ── Texto libre ───────────────────────────────────────────────────────
+      // ── Texto libre ─────────────────────────────────────────────────────
       } else {
-        // Buscar primero en Spotify, luego Deezer como fallback
-        let { tracks, res } = await search(client.moon, query, 'spsearch');
+        // Buscar en Deezer primero, luego Spotify como fallback
+        let { tracks, res } = await search(client.moon, query, 'dzsearch');
 
         if (!tracks.length) {
-          const dz = await search(client.moon, query, 'dzsearch');
-          tracks = dz.tracks;
-          res    = dz.res;
+          const sp = await search(client.moon, query, 'spsearch');
+          tracks = sp.tracks;
+          res    = sp.res;
         }
 
-        if (!tracks.length) return loadingMsg.edit('❌ No se encontraron resultados en Spotify ni Deezer.');
+        if (!tracks.length) return loadingMsg.edit('❌ No se encontraron resultados.');
 
-        player.requester = message.author.id;
-        const track = tracks[0];
+        const track      = tracks[0];
+        const wasPlaying = player.playing;
         player.queue.add(track);
 
-        if (!player.playing) {
-          await player.play();
-          await loadingMsg.delete().catch(() => {});
+        console.log('🎵 Track añadido:', track.info.title, '| wasPlaying:', wasPlaying, '| queue size:', player.queue.size);
+
+        if (!wasPlaying) {
+          await startPlay(player, track);
+          await loadingMsg.edit(`▶️ **${track.info.title}** (${formatMs(track.info.length)}) — reproduciendo.`);
         } else {
           await loadingMsg.edit(`➕ **${track.info.title}** (${formatMs(track.info.length)}) añadido a la cola.`);
         }
