@@ -341,10 +341,13 @@ client.moon.on('nodeDisconnect', (node, reason) => {
   console.log('🔴 NODE DISCONNECT', { host: node.host, reason });
 });
 
-// Debug: log ALL moonlink events
-const moonEvents = ['trackStart','trackEnd','trackError','trackStuck','playerCreate','playerDestroy','playerUpdate','queueEnd','socketClosed'];
+// Debug: log moonlink events safely (avoiding circular refs)
+const moonEvents = ["trackStart","trackEnd","trackError","trackStuck","playerCreate","playerDestroy","playerUpdate","queueEnd","socketClosed","start","end","error","stuck"];
 moonEvents.forEach(evt => {
   client.moon.on(evt, (...args) => {
-    console.log(`🌙 moonlink event: ${evt}`, args.map(a => typeof a === 'object' ? JSON.stringify(a)?.substring(0,100) : a));
+    try {
+      const safe = args.map(a => (!a || typeof a !== "object") ? a : { title: a?.info?.title || a?.track?.info?.title || "?", type: a?.constructor?.name });
+      console.log("🌙 moonlink event: " + evt, JSON.stringify(safe));
+    } catch { console.log("🌙 moonlink event: " + evt + " [circular]"); }
   });
 });
